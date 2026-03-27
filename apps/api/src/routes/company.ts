@@ -37,9 +37,11 @@ const employeeCredentialsPdfSchema = z.object({
 
 const FOOD_VENDOR_TYPES = ["BAECKER", "METZGER"] as const;
 
-type CompanyGuard =
-  | { ok: true; companyId: string }
-  | { ok: false; error: string };
+type CompanyGuard = {
+  ok: boolean;
+  companyId?: string;
+  error?: string;
+};
 
 type CompanyOrderRecord = Prisma.OrderGetPayload<{
   include: {

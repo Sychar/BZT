@@ -49,18 +49,17 @@ const parseDateTime = (value: string) => {
   return parsed;
 };
 
-type RestaurantGuard =
-  | {
-      ok: true;
-      vendor: {
-        id: string;
-        type: string;
-        visibility: string;
-        partnership: string;
-        supportsReservations: boolean;
-      };
-    }
-  | { ok: false; error: string };
+type RestaurantGuard = {
+  ok: boolean;
+  vendor?: {
+    id: string;
+    type: string;
+    visibility: string;
+    partnership: string;
+    supportsReservations: boolean;
+  };
+  error?: string;
+};
 
 const getRestaurant = async (vendorId: string): Promise<RestaurantGuard> => {
   const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
