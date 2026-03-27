@@ -1,0 +1,20 @@
+{
+  "name": "vorbestell-platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "dev:mobile": "npm run dev -w apps/mobile",
+    "build:shared": "npm run build -w packages/shared",
+    "lint": "npm run lint -w apps/api",
+    "test": "npm run test -w apps/api"
+  },
+  "overrides": {
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  }
+}

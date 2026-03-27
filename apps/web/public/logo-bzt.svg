@@ -1,0 +1,8 @@
+﻿<svg width="640" height="240" viewBox="0 0 640 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="240" fill="transparent"/>
+  <text x="320" y="96" text-anchor="middle" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="88" font-weight="700" letter-spacing="6" fill="#1C1C1C">B·Z·T</text>
+  <path d="M70 132H180" stroke="#233736" stroke-width="6" stroke-linecap="square"/>
+  <path d="M460 132H570" stroke="#233736" stroke-width="6" stroke-linecap="square"/>
+  <path d="M70 132V206H570V132" stroke="#233736" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter"/>
+  <text x="320" y="184" text-anchor="middle" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="56" font-weight="500" fill="#C65A3A">bis zum tisch</text>
+</svg>

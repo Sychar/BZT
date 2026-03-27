@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Vorbestell",
+    "slug": "vorbestell",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+    "userInterfaceStyle": "light"
+  }
+}

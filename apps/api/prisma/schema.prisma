@@ -1,0 +1,296 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  VENDOR
+  COMPANY
+}
+
+enum CustomerType {
+  EMPLOYEE
+  PRIVATE
+}
+
+enum VendorType {
+  BAECKER
+  METZGER
+  RESTAURANT
+}
+
+enum VendorVisibility {
+  PUBLIC
+  COMPANY_ONLY
+}
+
+enum VendorPartnership {
+  PARTNER
+  AD_ONLY
+}
+
+enum VendorCompanyStatus {
+  PENDING
+  APPROVED
+}
+
+enum OrderStatus {
+  EINGEGANGEN
+  IN_BEARBEITUNG
+  FERTIG
+  ABGEHOLT
+  STORNIERT
+}
+
+enum ReservationStatus {
+  ANGEFRAGT
+  BESTAETIGT
+  STORNIERT
+}
+
+enum ProductCategory {
+  BROT
+  BELAG
+  GETRAENK
+  FLEISCH
+  WURST
+  SONSTIGES
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  customerType CustomerType?
+  companyId    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company Company? @relation(fields: [companyId], references: [id])
+  vendor Vendor?
+  orders Order[]
+  restaurantOrders RestaurantOrder[]
+  reservations     Reservation[]
+  usedInvites      CompanyInvite[] @relation("InviteUsedBy")
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  isActive  Boolean  @default(false)
+  activatedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users   User[]
+  vendorLinks VendorCompany[]
+  invites CompanyInvite[]
+}
+
+model CompanyInvite {
+  id           String   @id @default(uuid())
+  companyId    String
+  code         String   @unique
+  usedAt       DateTime?
+  usedByUserId String?
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+  usedBy  User?   @relation("InviteUsedBy", fields: [usedByUserId], references: [id])
+}
+
+model Vendor {
+  id          String      @id @default(uuid())
+  name        String
+  type        VendorType
+  address     String
+  cutoffTime  String      @default("04:00")
+  visibility  VendorVisibility @default(PUBLIC)
+  partnership VendorPartnership @default(PARTNER)
+  supportsReservations Boolean  @default(false)
+  ownerUserId String?     @unique
+  ownerUser   User?       @relation(fields: [ownerUserId], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  companyLinks VendorCompany[]
+  products Product[]
+  orders   Order[]
+  batches  DailyBatch[]
+  menus    DailyMenu[]
+  restaurantOrders RestaurantOrder[]
+  reservations     Reservation[]
+}
+
+model VendorCompany {
+  vendorId  String
+  companyId String
+  status    VendorCompanyStatus @default(PENDING)
+  requestedAt DateTime @default(now())
+  approvedAt DateTime?
+  createdAt DateTime @default(now())
+
+  vendor  Vendor  @relation(fields: [vendorId], references: [id])
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@id([vendorId, companyId])
+}
+
+model Product {
+  id        String          @id @default(uuid())
+  vendorId  String
+  vendor    Vendor          @relation(fields: [vendorId], references: [id])
+  name      String
+  category  ProductCategory
+  price     Decimal         @db.Decimal(10, 2)
+  unit      String
+  active    Boolean         @default(true)
+  imageUrl  String?
+  isPromo   Boolean         @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  orderItems  OrderItem[]
+  batchItems  DailyBatchItem[]
+}
+
+model Order {
+  id           String       @id @default(uuid())
+  userId       String
+  vendorId     String
+  pickupWindow String
+  note         String?
+  status       OrderStatus  @default(EINGEGANGEN)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+  items  OrderItem[]
+  batches DailyBatchOrder[]
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  productId String
+  qty       Int
+  unitPrice Decimal  @db.Decimal(10, 2)
+  itemNote  String?
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model DailyBatch {
+  id         String   @id @default(uuid())
+  vendorId   String
+  batchDate  DateTime
+  rangeStart DateTime
+  rangeEnd   DateTime
+  createdAt  DateTime @default(now())
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+  items  DailyBatchItem[]
+  orders DailyBatchOrder[]
+
+  @@unique([vendorId, batchDate])
+}
+
+model DailyBatchItem {
+  id        String @id @default(uuid())
+  batchId   String
+  productId String
+  totalQty  Int
+
+  batch   DailyBatch @relation(fields: [batchId], references: [id])
+  product Product   @relation(fields: [productId], references: [id])
+}
+
+model DailyBatchOrder {
+  id      String @id @default(uuid())
+  batchId String
+  orderId String
+
+  batch DailyBatch @relation(fields: [batchId], references: [id])
+  order Order      @relation(fields: [orderId], references: [id])
+
+  @@unique([batchId, orderId])
+}
+
+model DailyMenu {
+  id          String   @id @default(uuid())
+  vendorId    String
+  date        DateTime
+  title       String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+  items  DailyMenuItem[]
+}
+
+model DailyMenuItem {
+  id          String   @id @default(uuid())
+  menuId      String
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  active      Boolean  @default(true)
+
+  menu DailyMenu @relation(fields: [menuId], references: [id])
+  restaurantOrderItems RestaurantOrderItem[]
+}
+
+model RestaurantOrder {
+  id         String      @id @default(uuid())
+  userId     String
+  vendorId   String
+  pickupTime DateTime
+  note       String?
+  status     OrderStatus @default(EINGEGANGEN)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+  items  RestaurantOrderItem[]
+}
+
+model RestaurantOrderItem {
+  id         String  @id @default(uuid())
+  orderId    String
+  menuItemId String
+  qty        Int
+  unitPrice  Decimal @db.Decimal(10, 2)
+  itemNote   String?
+
+  order    RestaurantOrder @relation(fields: [orderId], references: [id])
+  menuItem DailyMenuItem   @relation(fields: [menuItemId], references: [id])
+}
+
+model Reservation {
+  id              String            @id @default(uuid())
+  userId          String
+  vendorId        String
+  reservationTime DateTime
+  partySize       Int
+  note            String?
+  status          ReservationStatus @default(ANGEFRAGT)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+}
