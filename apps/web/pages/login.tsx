@@ -76,7 +76,7 @@ export default function LoginPage() {
       <main className="login-main">
         <section className="login-card" aria-label="Login Auswahl und Formular">
           <img
-            src="/logo-bzt.svg"
+            src="/logo1.png"
             alt="BZT Logo"
             className="login-logo"
           />
@@ -162,7 +162,7 @@ export default function LoginPage() {
       </main>
 
       <footer className="login-footer">
-        BZT · Brotzeit & Mittag digital
+        <img src="/logo2.png" alt="Bis zum Tisch gmah" className="login-footer-logo" />
       </footer>
     </div>
   );

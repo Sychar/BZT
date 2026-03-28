@@ -1048,6 +1048,13 @@ body {
   font-size: 0.86rem;
 }
 
+.login-footer-logo {
+  width: min(260px, 72vw);
+  height: auto;
+  margin: 0 auto;
+  display: block;
+}
+
 @keyframes login-panel-in {
   from {
     opacity: 0;
