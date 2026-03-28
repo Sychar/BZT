@@ -877,3 +877,201 @@ body {
     grid-template-columns: minmax(0, 1.56fr) minmax(0, 0.84fr);
   }
 }
+
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(198, 90, 58, 0.12), transparent 45%),
+    radial-gradient(circle at 90% 20%, rgba(35, 55, 54, 0.08), transparent 45%),
+    linear-gradient(160deg, #f5f6f8 0%, #ffffff 60%);
+}
+
+.login-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1rem, 4vw, 2.6rem);
+}
+
+.login-card {
+  width: min(95vw, 560px);
+  border-radius: 34px;
+  border: 1px solid rgba(24, 24, 24, 0.08);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 26px 52px rgba(22, 22, 22, 0.12);
+  padding: clamp(1.1rem, 3vw, 2rem);
+}
+
+.login-logo {
+  display: block;
+  width: 180px;
+  max-width: 80%;
+  margin: 0 auto 1rem;
+  height: auto;
+}
+
+.login-title {
+  text-align: center;
+  color: #1f2b2a;
+  font-size: clamp(2rem, 4vw, 2.7rem);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.login-subtitle {
+  margin-top: 0.35rem;
+  text-align: center;
+  color: rgba(31, 43, 42, 0.72);
+  font-size: 0.98rem;
+}
+
+.login-mode-row {
+  margin-top: 1.3rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.login-mode-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(24, 24, 24, 0.12);
+  background: #f1f2f4;
+  color: rgba(31, 43, 42, 0.84);
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 0.72rem 1rem;
+  transition: transform 180ms ease, background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
+.login-mode-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(198, 90, 58, 0.45);
+}
+
+.login-mode-btn.is-active {
+  background: #c65a3a;
+  border-color: #c65a3a;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(198, 90, 58, 0.24);
+}
+
+.login-form {
+  margin-top: 1.2rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.login-form-enter {
+  animation: login-panel-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-panel-title {
+  margin-bottom: 0.15rem;
+  color: #1f2b2a;
+  font-size: 1.22rem;
+  font-weight: 650;
+}
+
+.login-label {
+  display: grid;
+  gap: 0.45rem;
+  color: rgba(31, 43, 42, 0.8);
+  font-size: 0.92rem;
+}
+
+.login-input {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(24, 24, 24, 0.12);
+  background: #f8f8f9;
+  color: #1f2b2a;
+  padding: 0.68rem 0.88rem;
+  outline: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.login-input:focus {
+  border-color: rgba(198, 90, 58, 0.7);
+  box-shadow: 0 0 0 3px rgba(198, 90, 58, 0.16);
+  background: #fff;
+}
+
+.login-submit-btn {
+  margin-top: 0.2rem;
+  border-radius: 999px;
+  border: 0;
+  background: #c65a3a;
+  color: #fff;
+  font-weight: 650;
+  font-size: 0.94rem;
+  padding: 0.8rem 1.2rem;
+  transition: transform 180ms ease, background-color 180ms ease, opacity 180ms ease;
+}
+
+.login-submit-btn:hover {
+  transform: translateY(-1px);
+  background: #b84f30;
+}
+
+.login-submit-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.login-forgot-link {
+  display: inline-flex;
+  width: fit-content;
+  color: rgba(31, 43, 42, 0.64);
+  font-size: 0.9rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 160ms ease;
+}
+
+.login-forgot-link:hover {
+  color: #c65a3a;
+}
+
+.login-error {
+  color: #9f2f2f;
+  font-size: 0.9rem;
+}
+
+.login-footer {
+  padding: 0.9rem 1rem 1.25rem;
+  text-align: center;
+  color: rgba(31, 43, 42, 0.58);
+  font-size: 0.86rem;
+}
+
+@keyframes login-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 560px) {
+  .login-card {
+    border-radius: 26px;
+    padding: 1rem;
+  }
+
+  .login-mode-row {
+    gap: 0.55rem;
+  }
+
+  .login-mode-btn {
+    font-size: 0.86rem;
+    padding: 0.65rem 0.75rem;
+  }
+}
