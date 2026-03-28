@@ -231,7 +231,7 @@ body {
 }
 
 .landing-logo {
-  @apply block h-16 w-52 shrink-0 sm:h-20 sm:w-64 md:h-48 md:w-[36rem];
+  @apply block h-16 w-52 shrink-0 sm:h-20 sm:w-64 md:h-28 md:w-[21rem];
 }
 
 .landing-logo img {
