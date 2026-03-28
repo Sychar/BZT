@@ -4,29 +4,29 @@ import { PageShell } from "../components/PageShell";
 const processSteps = [
   {
     title: "Mitarbeiter registrieren",
-    text: "Mitarbeiter nutzen den Firmen-Code fÃ¼r eine saubere Firmen-Zuordnung."
+    text: "Mitarbeiter nutzen den Firmen-Code für eine saubere Firmen-Zuordnung."
   },
   {
     title: "Anbieter anfragen",
-    text: "BÃ¤cker oder Metzger senden Ã¼ber den Firmen-Code eine Verbindungsanfrage."
+    text: "Bäcker oder Metzger senden über den Firmen-Code eine Verbindungsanfrage."
   },
   {
     title: "Admin-Freigabe",
-    text: "Der neutrale Plattform-Admin bestÃ¤tigt die Anfrage und schaltet die Verbindung frei."
+    text: "Der neutrale Plattform-Admin bestätigt die Anfrage und schaltet die Verbindung frei."
   }
 ];
 
 const advantages = [
   {
-    title: "FÃ¼r BÃ¤cker",
+    title: "für Bäcker",
     text: "Planbare Mengen, weniger Leerlauf und klare Abholzeiten pro Firma."
   },
   {
-    title: "FÃ¼r Firmen",
+    title: "für Firmen",
     text: "Ein zentraler Firmen-Code, saubere Freigaben und transparente Bestellwege."
   },
   {
-    title: "FÃ¼r Mitarbeiter",
+    title: "für Mitarbeiter",
     text: "Schnelle Vorbestellung ohne Warteschlange und einfache Zuordnung zur Firma."
   }
 ];
@@ -66,7 +66,7 @@ export default function Home() {
 
       <div className="landing-shell">
         <section className="hero-banner">
-          <img src="/bild2.jpg" alt="BÃ¤ckerei und Metzgerei" className="hero-banner-image" />
+          <img src="/bild2.jpg" alt="Bäckerei und Metzgerei" className="hero-banner-image" />
           <div className="hero-banner-overlay">
             <h1>Wir bringen Brotzeit und Mittag digital bis zum Tisch.</h1>
             <p>
@@ -86,7 +86,7 @@ export default function Home() {
 
         <section className="process-split">
           <div className="process-left">
-            <h2>So lÃ¤uft der Ablauf</h2>
+            <h2>So läuft der Ablauf</h2>
             <ol>
               {processSteps.map((step, index) => (
                 <li key={step.title}>
@@ -105,7 +105,7 @@ export default function Home() {
         </section>
 
         <section className="benefits-section">
-          <h2>Unsere Vorteile fÃ¼r BÃ¤cker, Firmen und Mitarbeiter</h2>
+          <h2>Unsere Vorteile für Bäcker, Firmen und Mitarbeiter</h2>
           <div className="benefits-grid">
             {advantages.map((item) => (
               <article key={item.title} className="benefits-item">
@@ -118,25 +118,25 @@ export default function Home() {
 
         <section className="support-section">
           <div className="support-copy">
-            <h2>Wir unterstÃ¼tzen BÃ¤cker, Metzgerei und Lokale</h2>
+            <h2>Wir unterstützen Bäcker, Metzgerei und Lokale</h2>
             <p>
               Mit digitaler Vorbestellung, Firmen-Code und neutraler Admin-Freigabe verbinden wir
               Anbieter und Firmen in einem klaren Ablauf.
             </p>
             <ul>
               <li>Weniger Stress im Morgenbetrieb durch vorgeplante Mengen.</li>
-              <li>Saubere Zuordnung von Mitarbeitern Ã¼ber den Firmen-Code.</li>
-              <li>Lokale Anbieter bleiben sichtbar und erhalten stabile BestellstrÃ¶me.</li>
+              <li>Saubere Zuordnung von Mitarbeitern über den Firmen-Code.</li>
+              <li>Lokale Anbieter bleiben sichtbar und erhalten stabile Bestellströme.</li>
             </ul>
           </div>
           <div className="support-media">
-            <img src="/bild2.jpg" alt="BÃ¤ckerei und lokale Anbieter" />
+            <img src="/bild2.jpg" alt="Bäckerei und lokale Anbieter" />
           </div>
         </section>
 
         <section className="practice-section">
           <div className="practice-head">
-            <h2>Meinungen aus der Praxis Ã¼ber uns</h2>
+            <h2>Meinungen aus der Praxis über uns</h2>
             <div className="practice-arrows" aria-hidden="true">
               <span>&larr;</span>
               <span>&rarr;</span>
@@ -157,7 +157,7 @@ export default function Home() {
         </section>
 
         <section className="landing-cta">
-          <h2>Bereit fÃ¼r den Start?</h2>
+          <h2>Bereit für den Start?</h2>
           <p>Starte jetzt mit Firmen-Code, Anbieter-Freigabe und digitaler Vorbestellung.</p>
           <Link href="/register" className="btn-primary">
             Kostenlos registrieren
@@ -170,7 +170,7 @@ export default function Home() {
           <div className="footer-brand">
             <img src="/logo2.png" alt="Bis zum Tisch gmah" className="footer-brand-logo" />
             <p>
-              Digitale Vorbestellung fÃ¼r Firmen, Mitarbeiter und Anbieter. Einfach, lokal und
+              Digitale Vorbestellung für Firmen, Mitarbeiter und Anbieter. Einfach, lokal und
               planbar.
             </p>
           </div>
@@ -199,4 +199,5 @@ export default function Home() {
     </PageShell>
   );
 }
+
 

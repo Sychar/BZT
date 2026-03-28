@@ -230,7 +230,7 @@ body {
 }
 
 .landing-logo {
-  @apply block h-16 w-44 shrink-0;
+  @apply block h-20 w-60 shrink-0 md:h-24 md:w-72;
 }
 
 .landing-logo img {
@@ -500,7 +500,7 @@ body {
 }
 
 .footer-brand-logo {
-  width: min(280px, 82%);
+  width: clamp(260px, 38vw, 460px);
   height: auto;
   display: block;
 }
