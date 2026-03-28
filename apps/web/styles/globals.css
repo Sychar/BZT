@@ -230,7 +230,7 @@ body {
 }
 
 .landing-logo {
-  @apply block h-20 w-60 shrink-0 md:h-24 md:w-72;
+  @apply block h-24 w-72 shrink-0 md:h-48 md:w-[36rem];
 }
 
 .landing-logo img {
@@ -500,7 +500,7 @@ body {
 }
 
 .footer-brand-logo {
-  width: clamp(260px, 38vw, 460px);
+  width: clamp(210px, 26vw, 320px);
   height: auto;
   display: block;
 }
@@ -917,6 +917,27 @@ body {
   max-width: 80%;
   margin: 0 auto 1rem;
   height: auto;
+}
+
+.login-back-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(31, 43, 42, 0.18);
+  color: rgba(31, 43, 42, 0.85);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  margin-bottom: 0.9rem;
+  transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease;
+}
+
+.login-back-link:hover {
+  border-color: #c65a3a;
+  color: #c65a3a;
+  background: rgba(198, 90, 58, 0.08);
 }
 
 .login-title {

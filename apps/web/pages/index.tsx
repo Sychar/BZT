@@ -50,7 +50,7 @@ export default function Home() {
       <header className="landing-header">
         <div className="landing-header-inner">
           <Link href="/" className="landing-logo">
-            <img src="/logo1.png" alt="BZT Logo" />
+            <img src="/logo1-removebg-preview.png" alt="BZT Logo" />
           </Link>
           <nav className="landing-nav">
             <Link href="/login" className="landing-login-link">
@@ -168,7 +168,7 @@ export default function Home() {
       <footer className="landing-footer">
         <div className="landing-footer-inner">
           <div className="footer-brand">
-            <img src="/logo2.png" alt="Bis zum Tisch gmah" className="footer-brand-logo" />
+            <img src="/logo2-removebg-preview.png" alt="Bis zum Tisch gmah" className="footer-brand-logo" />
             <p>
               Digitale Vorbestellung für Firmen, Mitarbeiter und Anbieter. Einfach, lokal und
               planbar.

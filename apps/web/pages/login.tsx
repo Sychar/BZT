@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
+import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
@@ -75,6 +76,9 @@ export default function LoginPage() {
     <div className="login-screen">
       <main className="login-main">
         <section className="login-card" aria-label="Login Auswahl und Formular">
+          <Link href="/" className="login-back-link">
+            Zur Hauptseite
+          </Link>
           <img
             src="/logo-bzt.svg"
             alt="BZT Logo"
