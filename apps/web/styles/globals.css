@@ -499,6 +499,12 @@ body {
   @apply mt-4 max-w-md text-base text-paper/85;
 }
 
+.footer-brand-logo {
+  width: min(280px, 82%);
+  height: auto;
+  display: block;
+}
+
 .footer-links h4,
 .footer-contact h4 {
   @apply text-sm uppercase tracking-[0.08em] text-paper/75;
@@ -1046,13 +1052,6 @@ body {
   text-align: center;
   color: rgba(31, 43, 42, 0.58);
   font-size: 0.86rem;
-}
-
-.login-footer-logo {
-  width: min(260px, 72vw);
-  height: auto;
-  margin: 0 auto;
-  display: block;
 }
 
 @keyframes login-panel-in {
