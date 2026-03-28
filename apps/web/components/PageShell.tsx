@@ -65,33 +65,8 @@ export const PageShell: React.FC<{
               {auth.role === "VENDOR" && auth.vendorId && (
                 <>
                   <Link href="/vendor/dashboard" className="text-ink/80 transition hover:text-brand-600">
-                    Dashboard
+                    Home
                   </Link>
-                  {auth.vendorType !== "RESTAURANT" && (
-                    <Link href="/vendor/products" className="text-ink/80 transition hover:text-brand-600">
-                      Produkte
-                    </Link>
-                  )}
-                  {auth.vendorType !== "RESTAURANT" && (
-                    <Link href="/vendor/companies" className="text-ink/80 transition hover:text-brand-600">
-                      Firmen
-                    </Link>
-                  )}
-                  {auth.vendorType === "RESTAURANT" && (
-                    <Link href="/vendor/menus" className="text-ink/80 transition hover:text-brand-600">
-                      Menüs
-                    </Link>
-                  )}
-                  {auth.vendorType !== "RESTAURANT" && (
-                    <Link href="/vendor/orders" className="text-ink/80 transition hover:text-brand-600">
-                      Bestellungen
-                    </Link>
-                  )}
-                  {auth.vendorType !== "RESTAURANT" && (
-                    <Link href="/vendor/invoices" className="text-ink/80 transition hover:text-brand-600">
-                      Rechnungen
-                    </Link>
-                  )}
                 </>
               )}
 

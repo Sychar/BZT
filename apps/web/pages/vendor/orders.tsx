@@ -29,26 +29,43 @@ type CompanyGroup = {
   companyName: string;
   ordersCount: number;
   totalAmount: number;
+  averageOrderValue: number;
   orders: Order[];
 };
 
 type VendorOrdersResponse = {
+  period: "day" | "week" | "month";
+  periodLabel: string;
   batchDate: string;
   rangeStart?: string;
   rangeEnd?: string;
+  stats: {
+    totalOrders: number;
+    totalAmount: number;
+    averageOrderValue: number;
+  };
   orders: Order[];
-  companyGroups?: CompanyGroup[];
+  companyGroups: CompanyGroup[];
 };
 
 const todayISO = DateTime.now().toISODate() ?? new Date().toISOString().slice(0, 10);
+const monthISO = DateTime.now().toFormat("yyyy-MM");
 
 export default function VendorOrdersPage() {
   const auth = useAuth();
-  const [mode, setMode] = useState<"AKTUELL" | "HISTORIE">("AKTUELL");
-  const [historyDate, setHistoryDate] = useState(todayISO);
+  const [period, setPeriod] = useState<"day" | "week" | "month">("day");
+  const [dateValue, setDateValue] = useState(todayISO);
+  const [monthValue, setMonthValue] = useState(monthISO);
   const [data, setData] = useState<VendorOrdersResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const queryDate = useMemo(() => {
+    if (period === "month") {
+      return `${monthValue}-01`;
+    }
+    return dateValue;
+  }, [period, dateValue, monthValue]);
 
   useEffect(() => {
     if (!auth.token) return;
@@ -57,7 +74,7 @@ export default function VendorOrdersPage() {
       setLoading(true);
       setError(null);
       try {
-        const path = mode === "AKTUELL" ? "/orders/vendor" : `/orders/vendor?date=${historyDate}`;
+        const path = `/orders/vendor?period=${period}&date=${queryDate}`;
         const response = await apiFetch<VendorOrdersResponse>(path, {}, auth.token);
         setData(response);
       } catch (err) {
@@ -68,26 +85,7 @@ export default function VendorOrdersPage() {
     };
 
     load();
-  }, [auth.token, mode, historyDate]);
-
-  const totals = useMemo(() => {
-    if (!data) return { orders: 0, amount: 0 };
-
-    if (data.companyGroups && data.companyGroups.length > 0) {
-      const amount = data.companyGroups.reduce((sum, group) => sum + group.totalAmount, 0);
-      const orders = data.companyGroups.reduce((sum, group) => sum + group.ordersCount, 0);
-      return { orders, amount };
-    }
-
-    const amount = data.orders.reduce((sum, order) => {
-      const orderTotal = order.items.reduce(
-        (inner, item) => inner + item.qty * Number(item.unitPrice ?? 0),
-        0
-      );
-      return sum + orderTotal;
-    }, 0);
-    return { orders: data.orders.length, amount };
-  }, [data]);
+  }, [auth.token, period, queryDate]);
 
   return (
     <PageShell>
@@ -97,7 +95,7 @@ export default function VendorOrdersPage() {
             <p className="dashboard-eyebrow">Bestellungen</p>
             <h1>Bestellungen nach Firma</h1>
             <p className="dashboard-hero-copy">
-              Aktuelle Bestellungen und Historie, sauber nach Firmen gruppiert.
+              Firmenumsatz, Durchschnitt und Bestellungen nach Tag, Woche oder Monat.
             </p>
           </div>
         </section>
@@ -105,30 +103,45 @@ export default function VendorOrdersPage() {
         <section className="dashboard-panel">
           <div className="dashboard-panel-head">
             <div>
-              <h2>Ansicht</h2>
-              <p>Aktuell zeigt den laufenden Batch. Historie zeigt ein gewähltes Datum.</p>
+              <h2>Zeitraum</h2>
+              <p>Auswertung nach Firma mit Umsatz und Mittelwert.</p>
             </div>
 
             <div className="dashboard-panel-actions">
               <button
                 type="button"
-                className={`dashboard-ghost-btn ${mode === "AKTUELL" ? "is-active" : ""}`}
-                onClick={() => setMode("AKTUELL")}
+                className={`dashboard-ghost-btn ${period === "day" ? "is-active" : ""}`}
+                onClick={() => setPeriod("day")}
               >
-                Aktuell
+                Tag
               </button>
               <button
                 type="button"
-                className={`dashboard-ghost-btn ${mode === "HISTORIE" ? "is-active" : ""}`}
-                onClick={() => setMode("HISTORIE")}
+                className={`dashboard-ghost-btn ${period === "week" ? "is-active" : ""}`}
+                onClick={() => setPeriod("week")}
               >
-                Historie
+                Woche
               </button>
-              {mode === "HISTORIE" && (
+              <button
+                type="button"
+                className={`dashboard-ghost-btn ${period === "month" ? "is-active" : ""}`}
+                onClick={() => setPeriod("month")}
+              >
+                Monat
+              </button>
+
+              {period === "month" ? (
+                <input
+                  type="month"
+                  value={monthValue}
+                  onChange={(event) => setMonthValue(event.target.value)}
+                  className="dashboard-date-input"
+                />
+              ) : (
                 <input
                   type="date"
-                  value={historyDate}
-                  onChange={(event) => setHistoryDate(event.target.value)}
+                  value={dateValue}
+                  onChange={(event) => setDateValue(event.target.value)}
                   className="dashboard-date-input"
                 />
               )}
@@ -142,38 +155,30 @@ export default function VendorOrdersPage() {
           {!loading && data && (
             <>
               <div className="dashboard-inline-stats">
-                <span>Batch-Datum: {data.batchDate}</span>
-                <span>Bestellungen: {totals.orders}</span>
-                <span>Gesamt: {totals.amount.toFixed(2)} €</span>
+                <span>Zeitraum: {data.periodLabel}</span>
+                <span>Bestellungen: {data.stats.totalOrders}</span>
+                <span>Umsatz: {data.stats.totalAmount.toFixed(2)} €</span>
+                <span>Mittelwert: {data.stats.averageOrderValue.toFixed(2)} €</span>
               </div>
 
-              {(!data.companyGroups || data.companyGroups.length === 0) && data.orders.length === 0 ? (
+              {data.companyGroups.length === 0 ? (
                 <p className="dashboard-empty">Keine Bestellungen gefunden.</p>
               ) : (
                 <div className="dashboard-list">
-                  {(data.companyGroups && data.companyGroups.length > 0
-                    ? data.companyGroups
-                    : [
-                        {
-                          companyId: null,
-                          companyName: "Ohne Firma",
-                          ordersCount: data.orders.length,
-                          totalAmount: totals.amount,
-                          orders: data.orders
-                        }
-                      ]
-                  ).map((group) => (
+                  {data.companyGroups.map((group) => (
                     <article key={group.companyId ?? "no-company"} className="dashboard-list-item">
                       <div className="dashboard-list-head">
                         <div>
-                          <p className="dashboard-item-title">{group.companyName}</p>
+                          <p className="dashboard-item-title">
+                            Firma {group.companyName} hat {group.ordersCount} Bestellungen.
+                          </p>
                           <p className="dashboard-item-subtitle">
-                            {group.ordersCount} Bestellungen
+                            Mittelwert: {group.averageOrderValue.toFixed(2)} € pro Bestellung
                           </p>
                         </div>
                         <div className="dashboard-list-meta">
                           <p>{group.totalAmount.toFixed(2)} €</p>
-                          <span>Gruppensumme</span>
+                          <span>Umsatz</span>
                         </div>
                       </div>
 
@@ -186,7 +191,7 @@ export default function VendorOrdersPage() {
 
                           return (
                             <li key={order.id}>
-                              {order.user?.name ?? "Mitarbeiter"} · Abholung {order.pickupWindow} · {orderTotal.toFixed(2)} € · {order.status}
+                              {order.user?.name ?? "Mitarbeiter"} · {DateTime.fromISO(order.createdAt).toFormat("dd.MM.yyyy HH:mm")} · Abholung {order.pickupWindow} · {orderTotal.toFixed(2)} € · {order.status}
                             </li>
                           );
                         })}
@@ -202,3 +207,4 @@ export default function VendorOrdersPage() {
     </PageShell>
   );
 }
+

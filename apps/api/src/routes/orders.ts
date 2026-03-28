@@ -30,24 +30,86 @@ const statusSchema = z.object({
 });
 
 const vendorOrdersQuery = z.object({
-  date: z.string().optional()
+  date: z.string().optional(),
+  period: z.enum(["day", "week", "month"]).optional()
 });
 
-const buildVendorInvoicesPdf = (params: {
+const vendorInvoicePdfQuery = z.object({
+  date: z.string().optional(),
+  companyId: z.string().uuid()
+});
+
+type VendorPeriod = "day" | "week" | "month";
+
+const resolveVendorRange = (params: {
+  cutoffTime: string;
+  period?: VendorPeriod;
+  date?: string;
+}) => {
+  const period = params.period ?? "day";
+  const baseDate = params.date
+    ? DateTime.fromISO(params.date, { zone: TIMEZONE }).startOf("day")
+    : DateTime.now().setZone(TIMEZONE).startOf("day");
+
+  if (!baseDate.isValid) {
+    return null;
+  }
+
+  if (period === "day") {
+    const batchDate = params.date
+      ? DateTime.fromISO(params.date, { zone: TIMEZONE }).startOf("day")
+      : getCurrentBatchDate(params.cutoffTime);
+    if (!batchDate.isValid) return null;
+    const { start, end } = getBatchWindowForDate(batchDate, params.cutoffTime);
+    return {
+      period,
+      batchDate,
+      start,
+      end,
+      periodLabel: batchDate.toFormat("dd.MM.yyyy")
+    };
+  }
+
+  if (period === "week") {
+    const start = baseDate.startOf("week");
+    const end = start.plus({ weeks: 1 });
+    return {
+      period,
+      batchDate: start,
+      start,
+      end,
+      periodLabel: `${start.toFormat("dd.MM.yyyy")} - ${end
+        .minus({ days: 1 })
+        .toFormat("dd.MM.yyyy")}`
+    };
+  }
+
+  const start = baseDate.startOf("month");
+  const end = start.plus({ months: 1 });
+  return {
+    period,
+    batchDate: start,
+    start,
+    end,
+    periodLabel: start.toFormat("LLLL yyyy")
+  };
+};
+
+const buildCompanyInvoicePdf = (params: {
+  invoiceNo: string;
   vendorName: string;
-  dateLabel: string;
+  companyName: string;
+  periodLabel: string;
   rows: Array<{
     orderId: string;
-    companyName: string;
-    employeeName: string;
-    pickupWindow: string;
     createdAt: Date;
     positions: number;
-    totalAmount: number;
+    amount: number;
   }>;
   totalOrders: number;
   totalPositions: number;
   totalAmount: number;
+  averageAmount: number;
 }) =>
   new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
@@ -59,37 +121,48 @@ const buildVendorInvoicesPdf = (params: {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.fontSize(18).text("Lieferanten-Rechnungsauszug");
+    doc.fontSize(20).text("Rechnung");
+    doc.moveDown(0.4);
+    doc.fontSize(11).text(`Rechnungsnummer: ${params.invoiceNo}`);
+    doc.text(`Monat: ${params.periodLabel}`);
+    doc.moveDown(0.6);
+
+    doc.fontSize(11).text(`Von: ${params.vendorName}`);
+    doc.text(`An: ${params.companyName}`);
+    doc.moveDown(0.8);
+
+    doc.fontSize(12).text("Leistungsübersicht", { underline: true });
     doc.moveDown(0.5);
-    doc.fontSize(11).text(`Anbieter: ${params.vendorName}`);
-    doc.text(`Datum: ${params.dateLabel}`);
-    doc.text(`Bestellungen: ${params.totalOrders}`);
-    doc.text(`Positionen: ${params.totalPositions}`);
-    doc.text(`Gesamtbetrag: ${params.totalAmount.toFixed(2)} EUR`);
-    doc.moveDown();
 
     if (params.rows.length === 0) {
-      doc.fontSize(11).text("Keine Bestellungen für dieses Datum.");
+      doc.fontSize(11).text("Keine Bestellungen im gewählten Zeitraum.");
       doc.end();
       return;
     }
 
     params.rows.forEach((row, index) => {
-      doc
-        .fontSize(11)
-        .text(
-          `${index + 1}. Firma: ${row.companyName} | Mitarbeiter: ${row.employeeName}`
-        );
+      const createdAt = DateTime.fromJSDate(row.createdAt, { zone: TIMEZONE }).toFormat("dd.MM.yyyy");
       doc
         .fontSize(10)
         .text(
-          `Order ${row.orderId} | ${DateTime.fromJSDate(row.createdAt, {
-            zone: TIMEZONE
-          }).toFormat("dd.MM.yyyy HH:mm")} | Abholung ${row.pickupWindow} | Positionen ${row.positions} | Summe ${row.totalAmount.toFixed(2)} EUR`
+          `${index + 1}. ${createdAt} | Bestellung ${row.orderId.slice(
+            0,
+            8
+          )} | Positionen ${row.positions} | ${row.amount.toFixed(2)} EUR`
         );
-      doc.moveDown(0.45);
+      doc.moveDown(0.2);
     });
 
+    doc.moveDown(0.8);
+    doc.fontSize(12).text("Zusammenfassung", { underline: true });
+    doc.moveDown(0.4);
+    doc.fontSize(11).text(`Anzahl Bestellungen: ${params.totalOrders}`);
+    doc.text(`Anzahl Positionen: ${params.totalPositions}`);
+    doc.text(`Durchschnitt pro Bestellung: ${params.averageAmount.toFixed(2)} EUR`);
+    doc.fontSize(13).text(`Gesamtbetrag: ${params.totalAmount.toFixed(2)} EUR`);
+
+    doc.moveDown(1);
+    doc.fontSize(9).fillColor("#64748b").text("Erstellt durch BZT Lieferantenportal");
     doc.end();
   });
 
@@ -187,17 +260,23 @@ router.get(
     if (!vendor) {
       return res.status(404).json({ error: "Anbieter nicht gefunden." });
     }
-    const dateParam = (req.query as { date?: string }).date;
-    const batchDate = dateParam
-      ? DateTime.fromISO(dateParam, { zone: TIMEZONE }).startOf("day")
-      : getCurrentBatchDate(vendor.cutoffTime);
-    const { start, end } = getBatchWindowForDate(batchDate, vendor.cutoffTime);
+
+    const query = req.query as z.infer<typeof vendorOrdersQuery>;
+    const resolved = resolveVendorRange({
+      cutoffTime: vendor.cutoffTime,
+      period: query.period,
+      date: query.date
+    });
+    if (!resolved) {
+      return res.status(400).json({ error: "Datum ungültig." });
+    }
+
     const orders = await prisma.order.findMany({
       where: {
         vendorId,
         createdAt: {
-          gte: start.toUTC().toJSDate(),
-          lt: end.toUTC().toJSDate()
+          gte: resolved.start.toUTC().toJSDate(),
+          lt: resolved.end.toUTC().toJSDate()
         }
       },
       include: {
@@ -247,14 +326,28 @@ router.get(
       }
     }
 
-    const companyGroups = Array.from(companyBuckets.values()).sort((a, b) =>
-      a.companyName.localeCompare(b.companyName, "de")
-    );
+    const companyGroups = Array.from(companyBuckets.values())
+      .map((group) => ({
+        ...group,
+        averageOrderValue: group.ordersCount > 0 ? group.totalAmount / group.ordersCount : 0
+      }))
+      .sort((a, b) => a.companyName.localeCompare(b.companyName, "de"));
+
+    const totalAmount = companyGroups.reduce((sum, group) => sum + group.totalAmount, 0);
+    const totalOrders = companyGroups.reduce((sum, group) => sum + group.ordersCount, 0);
+    const averageOrderValue = totalOrders > 0 ? totalAmount / totalOrders : 0;
 
     return res.json({
-      batchDate: batchDate.toISODate(),
-      rangeStart: start.toISO(),
-      rangeEnd: end.toISO(),
+      period: resolved.period,
+      periodLabel: resolved.periodLabel,
+      batchDate: resolved.batchDate.toISODate(),
+      rangeStart: resolved.start.toISO(),
+      rangeEnd: resolved.end.toISO(),
+      stats: {
+        totalOrders,
+        totalAmount,
+        averageOrderValue
+      },
       orders,
       companyGroups
     });
@@ -265,7 +358,7 @@ router.get(
   "/vendor/invoices/export-pdf",
   authRequired,
   requireRole("VENDOR"),
-  validateQuery(vendorOrdersQuery),
+  validateQuery(vendorInvoicePdfQuery),
   asyncHandler(async (req, res) => {
     const vendorId = req.user?.vendorId;
     if (!vendorId) {
@@ -284,18 +377,23 @@ router.get(
       return res.status(404).json({ error: "Anbieter nicht gefunden." });
     }
 
-    const dateParam = (req.query as { date?: string }).date;
-    const batchDate = dateParam
-      ? DateTime.fromISO(dateParam, { zone: TIMEZONE }).startOf("day")
-      : getCurrentBatchDate(vendor.cutoffTime);
-    const { start, end } = getBatchWindowForDate(batchDate, vendor.cutoffTime);
+    const query = req.query as z.infer<typeof vendorInvoicePdfQuery>;
+    const resolved = resolveVendorRange({
+      cutoffTime: vendor.cutoffTime,
+      period: "month",
+      date: query.date
+    });
+    if (!resolved) {
+      return res.status(400).json({ error: "Datum ungültig." });
+    }
 
     const orders = await prisma.order.findMany({
       where: {
         vendorId: vendor.id,
+        user: { companyId: query.companyId },
         createdAt: {
-          gte: start.toUTC().toJSDate(),
-          lt: end.toUTC().toJSDate()
+          gte: resolved.start.toUTC().toJSDate(),
+          lt: resolved.end.toUTC().toJSDate()
         }
       },
       include: {
@@ -309,39 +407,50 @@ router.get(
       orderBy: { createdAt: "asc" }
     });
 
+    if (orders.length === 0) {
+      return res.status(404).json({ error: "Keine Bestellungen für diese Firma im gewählten Monat." });
+    }
+
+    const companyName = orders[0].user.company?.name ?? "Firma";
     const rows = orders.map((order) => {
       const positions = order.items.reduce((sum, item) => sum + item.qty, 0);
-      const totalAmount = order.items.reduce(
-        (sum, item) => sum + Number(item.unitPrice) * item.qty,
-        0
-      );
+      const amount = order.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.qty, 0);
       return {
         orderId: order.id,
-        companyName: order.user.company?.name ?? "Ohne Firma",
-        employeeName: order.user.name,
-        pickupWindow: order.pickupWindow,
         createdAt: order.createdAt,
         positions,
-        totalAmount
+        amount
       };
     });
 
-    const totalAmount = rows.reduce((sum, row) => sum + row.totalAmount, 0);
+    const totalAmount = rows.reduce((sum, row) => sum + row.amount, 0);
     const totalPositions = rows.reduce((sum, row) => sum + row.positions, 0);
+    const averageAmount = rows.length > 0 ? totalAmount / rows.length : 0;
+    const invoiceNo = `INV-${resolved.batchDate.toFormat("yyyyMM")}-${query.companyId
+      .slice(0, 6)
+      .toUpperCase()}`;
 
-    const pdfBuffer = await buildVendorInvoicesPdf({
+    const pdfBuffer = await buildCompanyInvoicePdf({
+      invoiceNo,
       vendorName: vendor.name,
-      dateLabel: batchDate.toISODate() ?? "",
+      companyName,
+      periodLabel: resolved.batchDate.toFormat("LLLL yyyy"),
       rows,
       totalOrders: rows.length,
       totalPositions,
-      totalAmount
+      totalAmount,
+      averageAmount
     });
+
+    const safeCompany = companyName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=\"vendor-rechnungen-${batchDate.toISODate()}.pdf\"`
+      `attachment; filename=\"rechnung-${safeCompany}-${resolved.batchDate.toFormat("yyyy-MM")}.pdf\"`
     );
 
     return res.send(pdfBuffer);
@@ -371,3 +480,4 @@ router.patch(
 );
 
 export default router;
+

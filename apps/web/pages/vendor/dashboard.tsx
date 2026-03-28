@@ -32,8 +32,8 @@ const tiles: Tile[] = [
   },
   {
     href: "/vendor/invoices",
-    title: "Rechnungen",
-    description: "Summen prüfen und CSV/PDF exportieren.",
+    title: "Rechnung erstellen",
+    description: "Monatliche Firmen-Rechnungen als PDF erzeugen.",
     icon: "invoices"
   }
 ];
@@ -89,7 +89,7 @@ export default function VendorDashboardPage() {
               <p className="dashboard-eyebrow">Anbieterbereich</p>
               <h1>Bäcker & Anbieter Dashboard</h1>
               <p className="dashboard-hero-copy">
-                Wähle einen Bereich: Produkte, Firmen, Bestellungen oder Rechnungen.
+                Wähle einen Bereich: Produkte, Firmen, Bestellungen oder Rechnung erstellen.
               </p>
             </div>
           </section>
