@@ -192,7 +192,7 @@ export default function Home() {
             <h4>Kontakt</h4>
             <p>kontakt@biszumtisch.de</p>
             <p>+49 40 1234 5678</p>
-            <p>Hamburg, Deutschland</p>
+            <p>Weiler-Simmerberg, 88171</p>
           </div>
         </div>
       </footer>
