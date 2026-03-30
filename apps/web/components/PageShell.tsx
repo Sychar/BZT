@@ -25,7 +25,7 @@ export const PageShell: React.FC<{
           <div className="mx-auto flex max-w-6xl flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-4">
               <Link href="/" className="block h-14 w-40 shrink-0">
-                <img src="/logo-bzt.svg" alt="B·Z·T bis zum tisch" className="h-full w-full object-contain" />
+                <img src="/startup2.png" alt="Startup2 Logo" className="h-full w-full object-contain" />
               </Link>
               <p className="hidden text-sm text-ink/65 md:block">
                 Brotzeit & Mittagstisch digital vorbestellen.

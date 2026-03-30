@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { PageShell } from "../../components/PageShell";
 import { useAuth } from "../../context/AuthContext";
 import { apiFetch, API_URL } from "../../lib/api";
@@ -22,6 +22,12 @@ type Invite = {
   expiresAt?: string | null;
 };
 
+type EditForm = {
+  name: string;
+  email: string;
+  password: string;
+};
+
 export default function CompanyEmployeesPage() {
   const auth = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -31,16 +37,16 @@ export default function CompanyEmployeesPage() {
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [creatingEmployee, setCreatingEmployee] = useState(false);
   const [pdfLoadingId, setPdfLoadingId] = useState<string | null>(null);
-  const [employeeForm, setEmployeeForm] = useState({
-    name: "",
-    email: "",
-    password: ""
-  });
+  const [bulkPdfLoading, setBulkPdfLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>({ name: "", email: "", password: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [employeeForm, setEmployeeForm] = useState({ name: "", email: "", password: "" });
   const [passwordByEmployeeId, setPasswordByEmployeeId] = useState<Record<string, string>>({});
 
   const load = async () => {
     if (!auth.token) return;
-
     setLoading(true);
     setError(null);
     try {
@@ -63,17 +69,10 @@ export default function CompanyEmployeesPage() {
 
   const createInvite = async () => {
     if (!auth.token) return;
-
     setCreatingInvite(true);
     setError(null);
     try {
-      const invite = await apiFetch<Invite>(
-        "/company/invites",
-        {
-          method: "POST"
-        },
-        auth.token
-      );
+      const invite = await apiFetch<Invite>("/company/invites", { method: "POST" }, auth.token);
       setInvites((prev) => [invite, ...prev]);
     } catch (err) {
       setError((err as Error).message);
@@ -82,37 +81,24 @@ export default function CompanyEmployeesPage() {
     }
   };
 
-  const downloadCredentialsPdf = async (
-    employeeId: string,
-    password: string,
-    employeeName: string
-  ) => {
+  const downloadCredentialsPdf = async (employeeId: string, password: string, employeeName: string) => {
     if (!auth.token || !password.trim()) return;
-
     setPdfLoadingId(employeeId);
     setError(null);
     try {
       const response = await fetch(`${API_URL}/company/employees/credentials-pdf`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${auth.token}`,
-          "Content-Type": "application/json"
-        },
+        headers: { Authorization: `Bearer ${auth.token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ employeeId, password })
       });
-
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload.error ?? "PDF konnte nicht erstellt werden.");
       }
-
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
-      const fileName = employeeName
-        .toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9-_]/g, "");
+      const fileName = employeeName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-_]/g, "");
       anchor.href = url;
       anchor.download = `zugangsdaten-${fileName || "mitarbeiter"}.pdf`;
       anchor.click();
@@ -124,35 +110,102 @@ export default function CompanyEmployeesPage() {
     }
   };
 
+  const downloadAllCredentialsPdf = async () => {
+    if (!auth.token) return;
+    if (!window.confirm("Achtung: Für alle Mitarbeiter werden neue Passwörter generiert und im PDF gespeichert. Fortfahren?")) return;
+    setBulkPdfLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_URL}/company/employees/credentials-pdf-bulk`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error ?? "Bulk-PDF konnte nicht erstellt werden.");
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "alle-zugangsdaten.pdf";
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBulkPdfLoading(false);
+    }
+  };
+
   const createEmployee = async () => {
     if (!auth.token) return;
-
     setCreatingEmployee(true);
     setError(null);
     try {
       const created = await apiFetch<CreatedEmployee>(
         "/company/employees",
-        {
-          method: "POST",
-          body: JSON.stringify(employeeForm)
-        },
+        { method: "POST", body: JSON.stringify(employeeForm) },
         auth.token
       );
-
       setEmployees((prev) => [created, ...prev]);
-      setPasswordByEmployeeId((prev) => ({
-        ...prev,
-        [created.id]: employeeForm.password
-      }));
-
+      setPasswordByEmployeeId((prev) => ({ ...prev, [created.id]: employeeForm.password }));
       const usedPassword = employeeForm.password;
       setEmployeeForm({ name: "", email: "", password: "" });
-
       await downloadCredentialsPdf(created.id, usedPassword, created.name);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setCreatingEmployee(false);
+    }
+  };
+
+  const deleteEmployee = async (id: string, name: string) => {
+    if (!auth.token) return;
+    if (!window.confirm(`Mitarbeiter "${name}" wirklich löschen?`)) return;
+    setDeletingId(id);
+    setError(null);
+    try {
+      await apiFetch(`/company/employees/${id}`, { method: "DELETE" }, auth.token);
+      setEmployees((prev) => prev.filter((e) => e.id !== id));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const startEdit = (employee: Employee) => {
+    setEditingId(employee.id);
+    setEditForm({ name: employee.name, email: employee.email, password: "" });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm({ name: "", email: "", password: "" });
+  };
+
+  const saveEdit = async (id: string) => {
+    if (!auth.token) return;
+    setSavingEdit(true);
+    setError(null);
+    try {
+      const body: Record<string, string> = {};
+      if (editForm.name.trim()) body.name = editForm.name.trim();
+      if (editForm.email.trim()) body.email = editForm.email.trim();
+      if (editForm.password.trim()) body.password = editForm.password.trim();
+
+      const updated = await apiFetch<Employee>(
+        `/company/employees/${id}`,
+        { method: "PUT", body: JSON.stringify(body) },
+        auth.token
+      );
+      setEmployees((prev) => prev.map((e) => (e.id === id ? updated : e)));
+      cancelEdit();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -167,13 +220,14 @@ export default function CompanyEmployeesPage() {
               <p className="dashboard-eyebrow">Mitarbeiter</p>
               <h1>Mitarbeiter & Zugangsdaten</h1>
               <p className="dashboard-hero-copy">
-                Mitarbeiter anlegen, Passwort vergeben und Zugangsdaten als PDF erzeugen.
+                Mitarbeiter anlegen, bearbeiten, löschen und Zugangsdaten als PDF erzeugen.
               </p>
             </div>
           </section>
 
           {error && <p className="text-sm text-brand-700">{error}</p>}
 
+          {/* Neuen Mitarbeiter erstellen */}
           <section className="dashboard-panel">
             <div className="dashboard-panel-head">
               <div>
@@ -188,9 +242,7 @@ export default function CompanyEmployeesPage() {
                 <input
                   className="dashboard-text-input"
                   value={employeeForm.name}
-                  onChange={(event) =>
-                    setEmployeeForm((prev) => ({ ...prev, name: event.target.value }))
-                  }
+                  onChange={(e) => setEmployeeForm((prev) => ({ ...prev, name: e.target.value }))}
                 />
               </div>
               <div className="settings-field">
@@ -199,9 +251,7 @@ export default function CompanyEmployeesPage() {
                   type="email"
                   className="dashboard-text-input"
                   value={employeeForm.email}
-                  onChange={(event) =>
-                    setEmployeeForm((prev) => ({ ...prev, email: event.target.value }))
-                  }
+                  onChange={(e) => setEmployeeForm((prev) => ({ ...prev, email: e.target.value }))}
                 />
               </div>
               <div className="settings-field full-width">
@@ -210,9 +260,7 @@ export default function CompanyEmployeesPage() {
                   type="password"
                   className="dashboard-text-input"
                   value={employeeForm.password}
-                  onChange={(event) =>
-                    setEmployeeForm((prev) => ({ ...prev, password: event.target.value }))
-                  }
+                  onChange={(e) => setEmployeeForm((prev) => ({ ...prev, password: e.target.value }))}
                 />
               </div>
             </div>
@@ -229,6 +277,7 @@ export default function CompanyEmployeesPage() {
             </div>
           </section>
 
+          {/* Invite-Codes */}
           <section className="dashboard-panel">
             <div className="dashboard-panel-head">
               <div>
@@ -263,12 +312,23 @@ export default function CompanyEmployeesPage() {
             )}
           </section>
 
+          {/* Mitarbeiterliste */}
           <section className="dashboard-panel">
             <div className="dashboard-panel-head">
               <div>
                 <h2>Mitarbeiterliste</h2>
-                <p>PDF-Zugangsdaten können je Mitarbeiter neu erzeugt werden.</p>
+                <p>{employees.length} Mitarbeiter · PDF-Zugangsdaten einzeln oder alle auf einmal erzeugen.</p>
               </div>
+              {employees.length > 0 && (
+                <button
+                  type="button"
+                  className="dashboard-primary-btn"
+                  onClick={downloadAllCredentialsPdf}
+                  disabled={bulkPdfLoading}
+                >
+                  {bulkPdfLoading ? "Erstelle PDF..." : "Alle Zugangsdaten-PDFs"}
+                </button>
+              )}
             </div>
 
             {loading ? (
@@ -279,47 +339,117 @@ export default function CompanyEmployeesPage() {
               <div className="dashboard-list">
                 {employees.map((employee) => (
                   <article key={employee.id} className="dashboard-list-item">
-                    <div className="dashboard-list-head">
-                      <div>
-                        <p className="dashboard-item-title">{employee.name}</p>
-                        <p className="dashboard-item-subtitle">{employee.email}</p>
-                        <p className="dashboard-item-subtitle">
-                          Registriert am {new Date(employee.createdAt).toLocaleString("de-DE")}
-                        </p>
-                      </div>
-                    </div>
+                    {editingId === employee.id ? (
+                      // Edit-Formular
+                      <>
+                        <div className="settings-grid">
+                          <div className="settings-field">
+                            <label>Name</label>
+                            <input
+                              className="dashboard-text-input"
+                              value={editForm.name}
+                              onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                            />
+                          </div>
+                          <div className="settings-field">
+                            <label>E-Mail</label>
+                            <input
+                              type="email"
+                              className="dashboard-text-input"
+                              value={editForm.email}
+                              onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                            />
+                          </div>
+                          <div className="settings-field full-width">
+                            <label>Neues Passwort (optional)</label>
+                            <input
+                              type="password"
+                              className="dashboard-text-input"
+                              placeholder="Leer lassen = Passwort unverändert"
+                              value={editForm.password}
+                              onChange={(e) => setEditForm((prev) => ({ ...prev, password: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                        <div className="dashboard-inline-actions">
+                          <button
+                            type="button"
+                            className="dashboard-primary-btn"
+                            onClick={() => saveEdit(employee.id)}
+                            disabled={savingEdit}
+                          >
+                            {savingEdit ? "Speichert..." : "Speichern"}
+                          </button>
+                          <button
+                            type="button"
+                            className="dashboard-ghost-btn"
+                            onClick={cancelEdit}
+                            disabled={savingEdit}
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      // Normal-Ansicht
+                      <>
+                        <div className="dashboard-list-head">
+                          <div>
+                            <p className="dashboard-item-title">{employee.name}</p>
+                            <p className="dashboard-item-subtitle">{employee.email}</p>
+                            <p className="dashboard-item-subtitle">
+                              Registriert am {new Date(employee.createdAt).toLocaleString("de-DE")}
+                            </p>
+                          </div>
+                          <div className="dashboard-inline-actions">
+                            <button
+                              type="button"
+                              className="dashboard-ghost-btn"
+                              onClick={() => startEdit(employee)}
+                            >
+                              Bearbeiten
+                            </button>
+                            <button
+                              type="button"
+                              className="dashboard-ghost-btn"
+                              onClick={() => deleteEmployee(employee.id, employee.name)}
+                              disabled={deletingId === employee.id}
+                            >
+                              {deletingId === employee.id ? "Löscht..." : "Löschen"}
+                            </button>
+                          </div>
+                        </div>
 
-                    <div className="dashboard-connect-row">
-                      <div className="dashboard-connect-field">
-                        <label>Passwort für PDF</label>
-                        <input
-                          type="password"
-                          className="dashboard-text-input"
-                          value={passwordByEmployeeId[employee.id] ?? ""}
-                          onChange={(event) =>
-                            setPasswordByEmployeeId((prev) => ({
-                              ...prev,
-                              [employee.id]: event.target.value
-                            }))
-                          }
-                          placeholder="Passwort eingeben"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        className="dashboard-ghost-btn"
-                        onClick={() =>
-                          downloadCredentialsPdf(
-                            employee.id,
-                            passwordByEmployeeId[employee.id] ?? "",
-                            employee.name
-                          )
-                        }
-                        disabled={pdfLoadingId === employee.id || !(passwordByEmployeeId[employee.id] ?? "").trim()}
-                      >
-                        {pdfLoadingId === employee.id ? "Erzeuge PDF..." : "Zugangsdaten-PDF"}
-                      </button>
-                    </div>
+                        <div className="dashboard-connect-row">
+                          <div className="dashboard-connect-field">
+                            <label>Passwort für PDF</label>
+                            <input
+                              type="password"
+                              className="dashboard-text-input"
+                              value={passwordByEmployeeId[employee.id] ?? ""}
+                              onChange={(e) =>
+                                setPasswordByEmployeeId((prev) => ({ ...prev, [employee.id]: e.target.value }))
+                              }
+                              placeholder="Passwort eingeben"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="dashboard-ghost-btn"
+                            onClick={() =>
+                              downloadCredentialsPdf(
+                                employee.id,
+                                passwordByEmployeeId[employee.id] ?? "",
+                                employee.name
+                              )
+                            }
+                            disabled={pdfLoadingId === employee.id || !(passwordByEmployeeId[employee.id] ?? "").trim()}
+                          >
+                            {pdfLoadingId === employee.id ? "Erzeuge PDF..." : "Zugangsdaten-PDF"}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </article>
                 ))}
               </div>

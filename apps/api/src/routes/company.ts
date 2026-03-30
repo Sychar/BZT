@@ -224,6 +224,35 @@ const generateInviteCode = () => {
   return `INV-${chunk}`;
 };
 
+const generateRandomPassword = () =>
+  crypto.randomBytes(6).toString("base64url").slice(0, 10);
+
+const writePdfCredentialsPage = (
+  doc: InstanceType<typeof PDFDocument>,
+  params: {
+    companyName: string;
+    companyCode: string;
+    employeeName: string;
+    employeeEmail: string;
+    password: string;
+  }
+) => {
+  doc.fontSize(18).text("B·Z·T Mitarbeiter-Zugangsdaten");
+  doc.moveDown();
+  doc.fontSize(12).text(`Firma: ${params.companyName}`);
+  doc.text(`Firmen-Code: ${params.companyCode}`);
+  doc.moveDown();
+  doc.text(`Name: ${params.employeeName}`);
+  doc.text(`E-Mail: ${params.employeeEmail}`);
+  doc.text(`Passwort: ${params.password}`);
+  doc.moveDown();
+  doc
+    .fontSize(10)
+    .text(
+      "Hinweis: Diese Zugangsdaten vertraulich behandeln und nach erstem Login Passwort ändern."
+    );
+};
+
 const buildCredentialsPdf = (params: {
   companyName: string;
   companyCode: string;
@@ -232,29 +261,38 @@ const buildCredentialsPdf = (params: {
   password: string;
 }) =>
   new Promise<Buffer>((resolve, reject) => {
-    const doc = new PDFDocument({
-      size: "A4",
-      margin: 50
-    });
+    const doc = new PDFDocument({ size: "A4", margin: 50 });
     const chunks: Buffer[] = [];
     doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.fontSize(18).text("B·Z·T Mitarbeiter-Zugangsdaten");
-    doc.moveDown();
-    doc.fontSize(12).text(`Firma: ${params.companyName}`);
-    doc.text(`Firmen-Code: ${params.companyCode}`);
-    doc.moveDown();
-    doc.text(`Name: ${params.employeeName}`);
-    doc.text(`E-Mail: ${params.employeeEmail}`);
-    doc.text(`Passwort: ${params.password}`);
-    doc.moveDown();
-    doc
-      .fontSize(10)
-      .text(
-        "Hinweis: Diese Zugangsdaten vertraulich behandeln und nach erstem Login Passwort ändern."
-      );
+    writePdfCredentialsPage(doc, params);
+    doc.end();
+  });
+
+const buildBulkCredentialsPdf = (params: {
+  companyName: string;
+  companyCode: string;
+  employees: Array<{ name: string; email: string; password: string }>;
+}) =>
+  new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    params.employees.forEach((emp, index) => {
+      if (index > 0) doc.addPage();
+      writePdfCredentialsPage(doc, {
+        companyName: params.companyName,
+        companyCode: params.companyCode,
+        employeeName: emp.name,
+        employeeEmail: emp.email,
+        password: emp.password
+      });
+    });
 
     doc.end();
   });
@@ -489,6 +527,159 @@ router.post(
     );
 
     return res.send(pdfBuffer);
+  })
+);
+
+router.post(
+  "/employees/credentials-pdf-bulk",
+  authRequired,
+  requireRole("COMPANY"),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: guard.companyId },
+      select: { id: true, name: true, code: true }
+    });
+    if (!company) {
+      return res.status(404).json({ error: "Firma nicht gefunden." });
+    }
+
+    const employees = await prisma.user.findMany({
+      where: {
+        role: "CUSTOMER",
+        customerType: "EMPLOYEE",
+        companyId: guard.companyId
+      },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: "asc" }
+    });
+
+    if (employees.length === 0) {
+      return res.status(400).json({ error: "Keine Mitarbeiter vorhanden." });
+    }
+
+    const employeesWithPasswords = employees.map((emp) => ({
+      ...emp,
+      password: generateRandomPassword()
+    }));
+
+    await Promise.all(
+      employeesWithPasswords.map((emp) =>
+        prisma.user.update({
+          where: { id: emp.id },
+          data: { passwordHash: bcrypt.hashSync(emp.password, 10) }
+        })
+      )
+    );
+
+    const pdfBuffer = await buildBulkCredentialsPdf({
+      companyName: company.name,
+      companyCode: company.code,
+      employees: employeesWithPasswords
+    });
+
+    const safeName = company.name
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-_]/g, "");
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="alle-zugangsdaten-${safeName || "mitarbeiter"}.pdf"`
+    );
+    return res.send(pdfBuffer);
+  })
+);
+
+router.delete(
+  "/employees/:id",
+  authRequired,
+  requireRole("COMPANY"),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const employee = await prisma.user.findFirst({
+      where: {
+        id: req.params.id,
+        role: "CUSTOMER",
+        customerType: "EMPLOYEE",
+        companyId: guard.companyId
+      },
+      select: { id: true }
+    });
+
+    if (!employee) {
+      return res.status(404).json({ error: "Mitarbeiter nicht gefunden." });
+    }
+
+    await prisma.user.delete({ where: { id: req.params.id } });
+    return res.json({ ok: true });
+  })
+);
+
+const updateEmployeeSchema = z.object({
+  name: z.string().min(2).optional(),
+  email: z.string().email().optional(),
+  password: z.string().min(6).optional()
+});
+
+router.put(
+  "/employees/:id",
+  authRequired,
+  requireRole("COMPANY"),
+  validateBody(updateEmployeeSchema),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const employee = await prisma.user.findFirst({
+      where: {
+        id: req.params.id,
+        role: "CUSTOMER",
+        customerType: "EMPLOYEE",
+        companyId: guard.companyId
+      },
+      select: { id: true, email: true }
+    });
+
+    if (!employee) {
+      return res.status(404).json({ error: "Mitarbeiter nicht gefunden." });
+    }
+
+    const { name, email, password } = req.body;
+
+    if (email && email !== employee.email) {
+      const existing = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true }
+      });
+      if (existing) {
+        return res.status(400).json({ error: "E-Mail ist bereits vergeben." });
+      }
+    }
+
+    const updateData: Record<string, unknown> = {};
+    if (name) updateData.name = name;
+    if (email) updateData.email = email;
+    if (password) updateData.passwordHash = await bcrypt.hash(password, 10);
+
+    const updated = await prisma.user.update({
+      where: { id: req.params.id },
+      data: updateData,
+      select: { id: true, name: true, email: true, createdAt: true }
+    });
+
+    return res.json(updated);
   })
 );
 

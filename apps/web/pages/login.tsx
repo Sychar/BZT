@@ -80,8 +80,8 @@ export default function LoginPage() {
             Zur Hauptseite
           </Link>
           <img
-            src="/logo-bzt.svg"
-            alt="BZT Logo"
+            src="/startup2.png"
+            alt="Startup2 Logo"
             className="login-logo"
           />
 

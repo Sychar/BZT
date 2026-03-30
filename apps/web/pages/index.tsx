@@ -50,7 +50,7 @@ export default function Home() {
       <header className="landing-header">
         <div className="landing-header-inner">
           <Link href="/" className="landing-logo">
-            <img src="/logo1-removebg-preview.png" alt="BZT Logo" />
+            <img src="/startup2.png" alt="Startup2 Logo" />
           </Link>
           <nav className="landing-nav">
             <Link href="/login" className="landing-login-link">

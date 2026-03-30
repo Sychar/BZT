@@ -11,10 +11,17 @@
     "dev:mobile": "npm run dev -w apps/mobile",
     "build:shared": "npm run build -w packages/shared",
     "lint": "npm run lint -w apps/api",
-    "test": "npm run test -w apps/api"
+    "test": "npm run test -w apps/api",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:ui": "playwright test --ui",
+    "e2e:install": "playwright install chromium"
   },
   "overrides": {
     "react": "18.2.0",
     "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
   }
 }
