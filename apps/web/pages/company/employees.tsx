@@ -45,6 +45,12 @@ type CompanyInfo = {
   internalCode: string | null;
 };
 
+type EditModalState = {
+  id: string;
+  name: string;
+  mitarbeiternummer: string;
+};
+
 export default function CompanyEmployeesPage() {
   const auth = useAuth();
 
@@ -77,11 +83,19 @@ export default function CompanyEmployeesPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importPdfLoading, setImportPdfLoading] = useState(false);
 
-  // --- State: Liste verwalten ---
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [savingEdit, setSavingEdit] = useState(false);
+  // --- State: Edit Modal ---
+  const [editModal, setEditModal] = useState<EditModalState | null>(null);
+  const [editModalPassword, setEditModalPassword] = useState("");
+  const [editModalMustChange, setEditModalMustChange] = useState(false);
+  const [editModalLoading, setEditModalLoading] = useState(false);
+  const [editModalError, setEditModalError] = useState<string | null>(null);
+
+  // --- State: Löschen ---
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // --- State: Export PDF ---
+  const [exportPdfLoading, setExportPdfLoading] = useState(false);
+  const [exportPdfError, setExportPdfError] = useState<string | null>(null);
 
   const loadAll = async () => {
     if (!auth.token) return;
@@ -270,35 +284,53 @@ export default function CompanyEmployeesPage() {
     }
   };
 
-  // --- Mitarbeiter bearbeiten (nur Name) ---
-  const startEdit = (emp: Employee) => {
-    setEditingId(emp.id);
-    setEditName(emp.name);
+  // --- Edit Modal ---
+  const openEditModal = (emp: Employee) => {
+    setEditModal({ id: emp.id, name: emp.name, mitarbeiternummer: emp.email });
+    setEditModalPassword("");
+    setEditModalMustChange(emp.mustChangePassword);
+    setEditModalError(null);
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditName("");
+  const closeEditModal = () => {
+    setEditModal(null);
+    setEditModalPassword("");
+    setEditModalMustChange(false);
+    setEditModalError(null);
   };
 
-  const saveEdit = async (id: string) => {
-    if (!auth.token || !editName.trim()) return;
-    setSavingEdit(true);
+  const saveEditModal = async () => {
+    if (!auth.token || !editModal) return;
+    if (!editModal.name.trim() || !editModal.mitarbeiternummer.trim()) {
+      setEditModalError("Name und Mitarbeiternummer dürfen nicht leer sein.");
+      return;
+    }
+    setEditModalLoading(true);
+    setEditModalError(null);
     try {
+      const body: Record<string, unknown> = {
+        name: editModal.name.trim(),
+        mitarbeiternummer: editModal.mitarbeiternummer.trim(),
+        mustChangePassword: editModalMustChange
+      };
+      if (editModalPassword.trim()) {
+        body.password = editModalPassword.trim();
+      }
       const updated = await apiFetch<Employee>(
-        `/company/employees/${id}`,
-        { method: "PUT", body: JSON.stringify({ name: editName.trim() }) },
+        `/company/employees/${editModal.id}`,
+        { method: "PUT", body: JSON.stringify(body) },
         auth.token
       );
-      setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, name: updated.name } : e)));
-      cancelEdit();
+      setEmployees((prev) => prev.map((e) => (e.id === editModal.id ? { ...e, ...updated } : e)));
+      closeEditModal();
     } catch (err) {
-      setEmployeesError((err as Error).message);
+      setEditModalError((err as Error).message);
     } finally {
-      setSavingEdit(false);
+      setEditModalLoading(false);
     }
   };
 
+  // --- Mitarbeiter löschen ---
   const deleteEmployee = async (id: string, name: string) => {
     if (!auth.token) return;
     if (!window.confirm(`Mitarbeiter "${name}" wirklich löschen?`)) return;
@@ -314,6 +346,33 @@ export default function CompanyEmployeesPage() {
     }
   };
 
+  // --- Export PDF alle Mitarbeiter ---
+  const downloadExportPdf = async () => {
+    if (!auth.token) return;
+    setExportPdfLoading(true);
+    setExportPdfError(null);
+    try {
+      const response = await fetch(`${API_URL}/company/employees/export-pdf`, {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error((payload as { error?: string }).error ?? "PDF konnte nicht erstellt werden.");
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "zugangsdaten-alle-mitarbeiter.pdf";
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportPdfError((err as Error).message);
+    } finally {
+      setExportPdfLoading(false);
+    }
+  };
+
   if (!auth.token) {
     return (
       <PageShell>
@@ -326,7 +385,7 @@ export default function CompanyEmployeesPage() {
 
   return (
     <PageShell>
-      <div className="dashboard-shell">
+      <div className="dashboard-shell overflow-x-hidden">
         {/* Hero */}
         <section className="dashboard-hero">
           <div>
@@ -344,8 +403,8 @@ export default function CompanyEmployeesPage() {
           {/* ── Card 1: Mitarbeiter importieren ── */}
           <section className="dashboard-panel flex flex-col gap-4">
             <div className="dashboard-panel-head">
-              <div>
-                <h2 className="flex items-center gap-2">
+              <div className="w-full overflow-hidden">
+                <h2 className="flex items-center gap-2 text-base sm:text-lg font-semibold break-words w-full overflow-hidden">
                   <span>📥</span> Mitarbeiter importieren
                 </h2>
                 <p>CSV oder Excel hochladen – Zugangsdaten werden automatisch erstellt.</p>
@@ -460,8 +519,8 @@ export default function CompanyEmployeesPage() {
           {/* ── Card 2: Manuell hinzufügen ── */}
           <section className="dashboard-panel flex flex-col gap-4">
             <div className="dashboard-panel-head">
-              <div>
-                <h2 className="flex items-center gap-2">
+              <div className="w-full overflow-hidden">
+                <h2 className="flex items-center gap-2 text-base sm:text-lg font-semibold break-words w-full overflow-hidden">
                   <span>➕</span> Manuell hinzufügen
                 </h2>
                 <p>Einzelnen Mitarbeiter anlegen – Passwort wird automatisch generiert.</p>
@@ -549,8 +608,8 @@ export default function CompanyEmployeesPage() {
           {/* ── Card 3: Mitarbeiterstatus ── */}
           <section className="dashboard-panel flex flex-col gap-4">
             <div className="dashboard-panel-head">
-              <div>
-                <h2 className="flex items-center gap-2">
+              <div className="w-full overflow-hidden">
+                <h2 className="flex items-center gap-2 text-base sm:text-lg font-semibold break-words w-full overflow-hidden">
                   <span>📊</span> Mitarbeiterstatus
                 </h2>
                 <p>Übersicht über aktive und neu angelegte Mitarbeiter.</p>
@@ -580,8 +639,8 @@ export default function CompanyEmployeesPage() {
           {/* ── Card 4: Mitarbeiterliste verwalten ── */}
           <section className="dashboard-panel flex flex-col gap-4">
             <div className="dashboard-panel-head">
-              <div>
-                <h2 className="flex items-center gap-2">
+              <div className="w-full overflow-hidden">
+                <h2 className="flex items-center gap-2 text-base sm:text-lg font-semibold break-words w-full overflow-hidden">
                   <span>👥</span> Mitarbeiterliste
                 </h2>
                 <p>Namen bearbeiten oder Mitarbeiter löschen.</p>
@@ -610,6 +669,19 @@ export default function CompanyEmployeesPage() {
             {codeError && <p className="text-sm text-brand-700">{codeError}</p>}
             {employeesError && <p className="text-sm text-brand-700">{employeesError}</p>}
 
+            {/* Export PDF Button */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                className="dashboard-ghost-btn px-3 py-2"
+                onClick={downloadExportPdf}
+                disabled={exportPdfLoading || employees.length === 0}
+              >
+                {exportPdfLoading ? "Erstelle PDF..." : "📄 Zugangsdaten exportieren (PDF)"}
+              </button>
+              {exportPdfError && <p className="text-sm text-brand-700">{exportPdfError}</p>}
+            </div>
+
             {loadingEmployees ? (
               <p className="dashboard-empty">Daten werden geladen...</p>
             ) : employees.length === 0 ? (
@@ -628,65 +700,34 @@ export default function CompanyEmployeesPage() {
                   <tbody>
                     {employees.map((emp) => (
                       <tr key={emp.id} className="border-t border-ink/5 hover:bg-cream/50 transition-colors">
-                        {editingId === emp.id ? (
-                          <td colSpan={4} className="px-3 py-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <input
-                                className="dashboard-text-input flex-1 min-w-[140px]"
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
-                                autoFocus
-                              />
-                              <button
-                                type="button"
-                                className="dashboard-primary-btn"
-                                onClick={() => saveEdit(emp.id)}
-                                disabled={savingEdit || !editName.trim()}
-                              >
-                                {savingEdit ? "..." : "Speichern"}
-                              </button>
-                              <button
-                                type="button"
-                                className="dashboard-ghost-btn"
-                                onClick={cancelEdit}
-                                disabled={savingEdit}
-                              >
-                                Abbrechen
-                              </button>
-                            </div>
-                          </td>
-                        ) : (
-                          <>
-                            <td className="px-3 py-2 font-medium text-ink">{emp.name}</td>
-                            <td className="px-3 py-2 font-mono text-xs text-ink/60 hidden sm:table-cell">{emp.email}</td>
-                            <td className="px-3 py-2 hidden md:table-cell">
-                              {emp.mustChangePassword ? (
-                                <span className="dashboard-status is-inactive">Noch nicht eingeloggt</span>
-                              ) : (
-                                <span className="dashboard-status is-active">Aktiv</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  type="button"
-                                  className="dashboard-ghost-btn"
-                                  onClick={() => startEdit(emp)}
-                                >
-                                  Bearbeiten
-                                </button>
-                                <button
-                                  type="button"
-                                  className="dashboard-ghost-btn"
-                                  onClick={() => deleteEmployee(emp.id, emp.name)}
-                                  disabled={deletingId === emp.id}
-                                >
-                                  {deletingId === emp.id ? "..." : "Löschen"}
-                                </button>
-                              </div>
-                            </td>
-                          </>
-                        )}
+                        <td className="px-3 py-2 font-medium text-ink">{emp.name}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-ink/60 hidden sm:table-cell">{emp.email}</td>
+                        <td className="px-3 py-2 hidden md:table-cell">
+                          {emp.mustChangePassword ? (
+                            <span className="dashboard-status is-inactive">Noch nicht eingeloggt</span>
+                          ) : (
+                            <span className="dashboard-status is-active">Aktiv</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col gap-1 sm:flex-row sm:justify-end sm:gap-2">
+                            <button
+                              type="button"
+                              className="dashboard-ghost-btn px-3 py-2 w-full sm:w-auto"
+                              onClick={() => openEditModal(emp)}
+                            >
+                              Bearbeiten
+                            </button>
+                            <button
+                              type="button"
+                              className="dashboard-ghost-btn px-3 py-2 w-full sm:w-auto"
+                              onClick={() => deleteEmployee(emp.id, emp.name)}
+                              disabled={deletingId === emp.id}
+                            >
+                              {deletingId === emp.id ? "..." : "Löschen"}
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -697,6 +738,80 @@ export default function CompanyEmployeesPage() {
 
         </div>
       </div>
+
+      {/* ── Edit Modal ── */}
+      {editModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl p-6 flex flex-col gap-4">
+            <h3 className="text-base sm:text-lg font-semibold text-ink break-words">
+              Mitarbeiter bearbeiten
+            </h3>
+
+            {editModalError && (
+              <p className="text-sm text-brand-700">{editModalError}</p>
+            )}
+
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-ink/70">Name</span>
+              <input
+                className="dashboard-text-input"
+                value={editModal.name}
+                onChange={(e) => setEditModal((p) => p ? { ...p, name: e.target.value } : p)}
+                autoFocus
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-ink/70">Mitarbeiternummer (= Benutzername)</span>
+              <input
+                className="dashboard-text-input font-mono"
+                value={editModal.mitarbeiternummer}
+                onChange={(e) => setEditModal((p) => p ? { ...p, mitarbeiternummer: e.target.value } : p)}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-ink/70">Neues Passwort</span>
+              <input
+                type="password"
+                className="dashboard-text-input"
+                placeholder="Leer lassen = unverändert"
+                value={editModalPassword}
+                onChange={(e) => setEditModalPassword(e.target.value)}
+              />
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={editModalMustChange}
+                onChange={(e) => setEditModalMustChange(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              <span className="text-sm text-ink/70">Passwort-Reset erzwingen (mustChangePassword)</span>
+            </label>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="dashboard-ghost-btn px-3 py-2 w-full sm:w-auto"
+                onClick={closeEditModal}
+                disabled={editModalLoading}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className="dashboard-primary-btn px-3 py-2 w-full sm:w-auto"
+                onClick={saveEditModal}
+                disabled={editModalLoading || !editModal.name.trim() || !editModal.mitarbeiternummer.trim()}
+              >
+                {editModalLoading ? "Speichern..." : "Speichern"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageShell>
   );
 }

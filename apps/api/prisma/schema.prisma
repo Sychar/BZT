@@ -71,6 +71,7 @@ model User {
   customerType       CustomerType?
   companyId          String?
   mustChangePassword Boolean  @default(false)
+  tempPassword       String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

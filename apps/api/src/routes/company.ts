@@ -4,6 +4,7 @@ import { DateTime } from "luxon";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import PDFDocument from "pdfkit";
+import QRCode from "qrcode";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { Prisma } from "@prisma/client";
@@ -470,6 +471,7 @@ router.post(
         name,
         email: mitarbeiternummer,
         passwordHash,
+        tempPassword: password,
         role: "CUSTOMER",
         customerType: "EMPLOYEE",
         companyId: company.id,
@@ -527,6 +529,120 @@ router.get(
       neverLoggedIn,
       active: total - neverLoggedIn
     });
+  })
+);
+
+router.get(
+  "/employees/export-pdf",
+  authRequired,
+  requireRole("COMPANY"),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: guard.companyId },
+      select: { id: true, name: true, internalCode: true }
+    });
+    if (!company) {
+      return res.status(404).json({ error: "Firma nicht gefunden." });
+    }
+
+    const employees = await prisma.user.findMany({
+      where: {
+        role: "CUSTOMER",
+        customerType: "EMPLOYEE",
+        companyId: guard.companyId
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        tempPassword: true,
+        mustChangePassword: true
+      },
+      orderBy: { name: "asc" }
+    });
+
+    if (employees.length === 0) {
+      return res.status(400).json({ error: "Keine Mitarbeiter vorhanden." });
+    }
+
+    const appUrl = process.env.APP_DOWNLOAD_URL ?? "https://bzt-web.vercel.app";
+    const qrBuffer = await QRCode.toBuffer(appUrl, { type: "png", width: 120 });
+
+    const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ size: "A4", margin: 50 });
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      employees.forEach((emp, index) => {
+        if (index > 0) doc.addPage();
+
+        // Header
+        doc.fontSize(22).font("Helvetica-Bold").text("BZT App — Zugangsdaten");
+        doc.moveDown(0.5);
+        doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+        doc.moveDown(0.5);
+
+        // Name
+        doc.fontSize(16).font("Helvetica-Bold").text(emp.name);
+        doc.moveDown(1);
+
+        // Credentials
+        doc.fontSize(12).font("Helvetica-Bold").text("Benutzername:");
+        doc.font("Helvetica").text(emp.email);
+        doc.moveDown(0.5);
+
+        doc.font("Helvetica-Bold").text("Passwort:");
+        if (emp.tempPassword) {
+          doc.font("Helvetica").text(emp.tempPassword);
+        } else {
+          doc.font("Helvetica").fillColor("#888888").text("Passwort bereits geändert").fillColor("black");
+        }
+        doc.moveDown(0.5);
+
+        if (company.internalCode) {
+          doc.font("Helvetica-Bold").text("Interner Firmencode:");
+          doc.font("Helvetica").text(company.internalCode);
+          doc.moveDown(0.5);
+        }
+
+        doc.moveDown(0.5);
+        doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+        doc.moveDown(0.5);
+
+        // QR Code + hint
+        doc.fontSize(11).font("Helvetica-Bold").text("App herunterladen:");
+        doc.moveDown(0.3);
+        doc.image(qrBuffer, { width: 100 });
+        doc.moveDown(0.3);
+        doc.fontSize(9).font("Helvetica").fillColor("#666666").text(appUrl).fillColor("black");
+
+        doc.moveDown(1);
+        doc.fontSize(9).fillColor("#888888").text(
+          "Hinweis: Zugangsdaten vertraulich behandeln und beim ersten Login Passwort ändern."
+        ).fillColor("black");
+      });
+
+      doc.end();
+    });
+
+    const safeName = company.name
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-_]/g, "");
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="zugangsdaten-alle-${safeName || "mitarbeiter"}.pdf"`
+    );
+    return res.send(pdfBuffer);
   })
 );
 
@@ -694,8 +810,9 @@ router.delete(
 
 const updateEmployeeSchema = z.object({
   name: z.string().min(2).optional(),
-  email: z.string().email().optional(),
-  password: z.string().min(6).optional()
+  mitarbeiternummer: z.string().min(1).optional(),
+  password: z.string().min(6).optional(),
+  mustChangePassword: z.boolean().optional()
 });
 
 router.put(
@@ -723,27 +840,34 @@ router.put(
       return res.status(404).json({ error: "Mitarbeiter nicht gefunden." });
     }
 
-    const { name, email, password } = req.body;
+    const { name, mitarbeiternummer, password, mustChangePassword } = req.body;
 
-    if (email && email !== employee.email) {
+    if (mitarbeiternummer && mitarbeiternummer !== employee.email) {
       const existing = await prisma.user.findUnique({
-        where: { email },
+        where: { email: mitarbeiternummer },
         select: { id: true }
       });
       if (existing) {
-        return res.status(400).json({ error: "E-Mail ist bereits vergeben." });
+        return res.status(400).json({ error: "Mitarbeiternummer ist bereits vergeben." });
       }
     }
 
     const updateData: Record<string, unknown> = {};
     if (name) updateData.name = name;
-    if (email) updateData.email = email;
-    if (password) updateData.passwordHash = await bcrypt.hash(password, 10);
+    if (mitarbeiternummer) updateData.email = mitarbeiternummer;
+    if (password) {
+      updateData.passwordHash = await bcrypt.hash(password, 10);
+      updateData.tempPassword = password;
+      updateData.mustChangePassword = true;
+    }
+    if (mustChangePassword !== undefined && !password) {
+      updateData.mustChangePassword = mustChangePassword;
+    }
 
     const updated = await prisma.user.update({
       where: { id: req.params.id },
       data: updateData,
-      select: { id: true, name: true, email: true, createdAt: true }
+      select: { id: true, name: true, email: true, mustChangePassword: true, createdAt: true }
     });
 
     return res.json(updated);
@@ -1219,6 +1343,7 @@ router.post(
           name,
           email,
           passwordHash,
+          tempPassword: password,
           role: "CUSTOMER",
           customerType: "EMPLOYEE",
           companyId: company.id,
