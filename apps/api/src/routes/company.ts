@@ -4,6 +4,8 @@ import { DateTime } from "luxon";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import PDFDocument from "pdfkit";
+import multer from "multer";
+import * as XLSX from "xlsx";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { authRequired, requireRole } from "../middleware/auth";
@@ -219,6 +221,8 @@ const csvEscape = (value: string | number | null) => {
   return raw;
 };
 
+const upload = multer({ storage: multer.memoryStorage() });
+
 const generateInviteCode = () => {
   const chunk = crypto.randomBytes(3).toString("hex").toUpperCase();
   return `INV-${chunk}`;
@@ -226,6 +230,25 @@ const generateInviteCode = () => {
 
 const generateRandomPassword = () =>
   crypto.randomBytes(6).toString("base64url").slice(0, 10);
+
+const generateInternalCode = () =>
+  crypto.randomBytes(4).toString("hex").toUpperCase(); // 8 Zeichen alphanumerisch
+
+const generateImportPassword = () => {
+  const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const lower = "abcdefghijklmnopqrstuvwxyz";
+  const digits = "0123456789";
+  const all = upper + lower + digits;
+  const bytes = crypto.randomBytes(12);
+  return Array.from(bytes)
+    .map((b, i) => {
+      if (i === 0) return upper[b % upper.length];
+      if (i === 1) return lower[b % lower.length];
+      if (i === 2) return digits[b % digits.length];
+      return all[b % all.length];
+    })
+    .join("");
+};
 
 const writePdfCredentialsPage = (
   doc: InstanceType<typeof PDFDocument>,
@@ -366,6 +389,7 @@ router.get(
         id: company.id,
         name: company.name,
         code: company.code,
+        internalCode: company.internalCode ?? null,
         isActive: company.isActive
       },
       employeeCount,
@@ -974,6 +998,243 @@ router.post(
       usedAt: invite.usedAt,
       expiresAt: invite.expiresAt
     });
+  })
+);
+
+// --- Interner Firmencode ---
+
+router.post(
+  "/internal-code/generate",
+  authRequired,
+  requireRole("COMPANY"),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: guard.companyId },
+      select: { id: true, internalCode: true }
+    });
+    if (!company) {
+      return res.status(404).json({ error: "Firma nicht gefunden." });
+    }
+    if (company.internalCode) {
+      return res.status(400).json({ error: "Interner Code existiert bereits. Bitte regenerieren." });
+    }
+
+    const internalCode = generateInternalCode();
+    const updated = await prisma.company.update({
+      where: { id: guard.companyId },
+      data: { internalCode },
+      select: { internalCode: true }
+    });
+
+    return res.status(201).json({ internalCode: updated.internalCode });
+  })
+);
+
+router.post(
+  "/internal-code/regenerate",
+  authRequired,
+  requireRole("COMPANY"),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: guard.companyId },
+      select: { id: true }
+    });
+    if (!company) {
+      return res.status(404).json({ error: "Firma nicht gefunden." });
+    }
+
+    const internalCode = generateInternalCode();
+    const updated = await prisma.company.update({
+      where: { id: guard.companyId },
+      data: { internalCode },
+      select: { internalCode: true }
+    });
+
+    return res.json({ internalCode: updated.internalCode });
+  })
+);
+
+// --- Mitarbeiter-Import (CSV/Excel) ---
+
+type ImportedEmployee = {
+  name: string;
+  username: string;
+  password: string;
+  internalCode: string | null;
+};
+
+const buildImportCredentialsPdf = (params: {
+  companyName: string;
+  internalCode: string | null;
+  employees: ImportedEmployee[];
+}) =>
+  new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    params.employees.forEach((emp, index) => {
+      if (index > 0) doc.addPage();
+      doc.fontSize(18).text("B·Z·T Mitarbeiter-Zugangsdaten");
+      doc.moveDown();
+      doc.fontSize(12).text(`Firma: ${params.companyName}`);
+      if (params.internalCode) {
+        doc.text(`Interner Firmen-Code: ${params.internalCode}`);
+      }
+      doc.moveDown();
+      doc.text(`Name: ${emp.name}`);
+      doc.text(`Benutzername: ${emp.username}`);
+      doc.text(`Passwort: ${emp.password}`);
+      doc.moveDown();
+      doc
+        .fontSize(10)
+        .text(
+          "Hinweis: Diese Zugangsdaten vertraulich behandeln und beim ersten Login Benutzername und Passwort ändern."
+        );
+    });
+
+    doc.end();
+  });
+
+router.post(
+  "/employees/import",
+  authRequired,
+  requireRole("COMPANY"),
+  upload.single("file"),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: "Keine Datei hochgeladen." });
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: guard.companyId },
+      select: { id: true, name: true, code: true, internalCode: true }
+    });
+    if (!company) {
+      return res.status(404).json({ error: "Firma nicht gefunden." });
+    }
+
+    let rows: Array<{ Name?: string; Mitarbeiternummer?: string }>;
+    try {
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(sheet);
+    } catch {
+      return res.status(400).json({ error: "Datei konnte nicht gelesen werden." });
+    }
+
+    if (!rows.length) {
+      return res.status(400).json({ error: "Datei enthält keine Daten." });
+    }
+
+    const created: ImportedEmployee[] = [];
+    const skipped: string[] = [];
+
+    for (const row of rows) {
+      const name = String(row.Name ?? "").trim();
+      const mitarbeiternummer = String(row.Mitarbeiternummer ?? "").trim();
+
+      if (!name || !mitarbeiternummer) {
+        skipped.push(`Zeile übersprungen: Name oder Mitarbeiternummer fehlt`);
+        continue;
+      }
+
+      // Mitarbeiternummer als Username (= Email-Feld)
+      const email = mitarbeiternummer;
+
+      const existing = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true }
+      });
+      if (existing) {
+        skipped.push(`${name} (${mitarbeiternummer}): Benutzername bereits vergeben`);
+        continue;
+      }
+
+      const password = generateImportPassword();
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      await prisma.user.create({
+        data: {
+          name,
+          email,
+          passwordHash,
+          role: "CUSTOMER",
+          customerType: "EMPLOYEE",
+          companyId: company.id,
+          mustChangePassword: true
+        }
+      });
+
+      created.push({
+        name,
+        username: mitarbeiternummer,
+        password,
+        internalCode: company.internalCode ?? null
+      });
+    }
+
+    return res.status(201).json({ created, skipped });
+  })
+);
+
+router.post(
+  "/employees/import/credentials-pdf",
+  authRequired,
+  requireRole("COMPANY"),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const { employees } = req.body as { employees?: ImportedEmployee[] };
+    if (!Array.isArray(employees) || employees.length === 0) {
+      return res.status(400).json({ error: "Keine Mitarbeiterdaten übergeben." });
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: guard.companyId },
+      select: { name: true, internalCode: true }
+    });
+    if (!company) {
+      return res.status(404).json({ error: "Firma nicht gefunden." });
+    }
+
+    const pdfBuffer = await buildImportCredentialsPdf({
+      companyName: company.name,
+      internalCode: company.internalCode ?? null,
+      employees
+    });
+
+    const safeName = company.name
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-_]/g, "");
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="import-zugangsdaten-${safeName || "mitarbeiter"}.pdf"`
+    );
+    return res.send(pdfBuffer);
   })
 );
 

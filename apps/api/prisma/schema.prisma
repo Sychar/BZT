@@ -63,15 +63,16 @@ enum ProductCategory {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         UserRole
-  customerType CustomerType?
-  companyId    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  name               String
+  email              String   @unique
+  passwordHash       String
+  role               UserRole
+  customerType       CustomerType?
+  companyId          String?
+  mustChangePassword Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   company Company? @relation(fields: [companyId], references: [id])
   vendor Vendor?
@@ -82,13 +83,14 @@ model User {
 }
 
 model Company {
-  id        String   @id @default(uuid())
-  name      String
-  code      String   @unique
-  isActive  Boolean  @default(false)
-  activatedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String
+  code         String   @unique
+  internalCode String?  @unique
+  isActive     Boolean  @default(false)
+  activatedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   users   User[]
   vendorLinks VendorCompany[]

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageShell } from "../../components/PageShell";
 import { useAuth } from "../../context/AuthContext";
 import { apiFetch, API_URL } from "../../lib/api";
@@ -28,6 +28,18 @@ type EditForm = {
   password: string;
 };
 
+type ImportedEmployee = {
+  name: string;
+  username: string;
+  password: string;
+  internalCode: string | null;
+};
+
+type ImportResult = {
+  created: ImportedEmployee[];
+  skipped: string[];
+};
+
 export default function CompanyEmployeesPage() {
   const auth = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -44,6 +56,14 @@ export default function CompanyEmployeesPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [employeeForm, setEmployeeForm] = useState({ name: "", email: "", password: "" });
   const [passwordByEmployeeId, setPasswordByEmployeeId] = useState<Record<string, string>>({});
+
+  // Import-State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importPdfLoading, setImportPdfLoading] = useState(false);
 
   const load = async () => {
     if (!auth.token) return;
@@ -185,6 +205,60 @@ export default function CompanyEmployeesPage() {
     setEditForm({ name: "", email: "", password: "" });
   };
 
+  const runImport = async () => {
+    if (!auth.token || !importFile) return;
+    setImporting(true);
+    setImportError(null);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile);
+      const result = await apiFetch<ImportResult>(
+        "/company/employees/import",
+        { method: "POST", body: formData },
+        auth.token
+      );
+      setImportResult(result);
+      if (result.created.length > 0) {
+        await load();
+      }
+    } catch (err) {
+      setImportError((err as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const downloadImportPdf = async () => {
+    if (!auth.token || !importResult?.created.length) return;
+    setImportPdfLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/company/employees/import/credentials-pdf`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ employees: importResult.created })
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error ?? "PDF konnte nicht erstellt werden.");
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "import-zugangsdaten.pdf";
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setImportError((err as Error).message);
+    } finally {
+      setImportPdfLoading(false);
+    }
+  };
+
   const saveEdit = async (id: string) => {
     if (!auth.token) return;
     setSavingEdit(true);
@@ -275,6 +349,115 @@ export default function CompanyEmployeesPage() {
                 {creatingEmployee ? "Speichert..." : "Mitarbeiter anlegen"}
               </button>
             </div>
+          </section>
+
+          {/* Mitarbeiter-Import */}
+          <section className="dashboard-panel">
+            <div className="dashboard-panel-head">
+              <div>
+                <h2>Mitarbeiter importieren (CSV/Excel)</h2>
+                <p>CSV oder Excel-Datei mit Spalten "Name" und "Mitarbeiternummer" hochladen.</p>
+              </div>
+            </div>
+
+            {importError && <p className="text-sm text-brand-700">{importError}</p>}
+
+            <div className="settings-grid">
+              <div className="settings-field full-width">
+                <label>Datei auswählen (.csv oder .xlsx)</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="dashboard-text-input"
+                  onChange={(e) => {
+                    setImportFile(e.target.files?.[0] ?? null);
+                    setImportResult(null);
+                    setImportError(null);
+                  }}
+                />
+              </div>
+            </div>
+
+            {importFile && !importResult && (
+              <div className="dashboard-inline-actions">
+                <button
+                  type="button"
+                  className="dashboard-primary-btn"
+                  onClick={runImport}
+                  disabled={importing}
+                >
+                  {importing ? "Importiere..." : "Zugangsdaten erstellen"}
+                </button>
+              </div>
+            )}
+
+            {importResult && (
+              <>
+                <p className="dashboard-empty">
+                  {importResult.created.length} Mitarbeiter importiert
+                  {importResult.skipped.length > 0 ? `, ${importResult.skipped.length} übersprungen` : ""}.
+                </p>
+
+                {importResult.created.length > 0 && (
+                  <>
+                    <div className="dashboard-list">
+                      {importResult.created.map((emp, i) => (
+                        <article key={i} className="dashboard-list-item">
+                          <div className="dashboard-list-head">
+                            <div>
+                              <p className="dashboard-item-title">{emp.name}</p>
+                              <p className="dashboard-item-subtitle">
+                                Benutzername: {emp.username} · Passwort: {emp.password}
+                              </p>
+                              {emp.internalCode && (
+                                <p className="dashboard-item-subtitle">
+                                  Interner Code: {emp.internalCode}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                    <div className="dashboard-inline-actions">
+                      <button
+                        type="button"
+                        className="dashboard-primary-btn"
+                        onClick={downloadImportPdf}
+                        disabled={importPdfLoading}
+                      >
+                        {importPdfLoading ? "Erstelle PDF..." : "Als PDF exportieren"}
+                      </button>
+                      <button
+                        type="button"
+                        className="dashboard-ghost-btn"
+                        onClick={() => {
+                          setImportResult(null);
+                          setImportFile(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                      >
+                        Neuer Import
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {importResult.skipped.length > 0 && (
+                  <div style={{ marginTop: "0.75rem" }}>
+                    <p className="dashboard-item-subtitle">Übersprungen:</p>
+                    <ul className="dashboard-compact-list">
+                      {importResult.skipped.map((msg, i) => (
+                        <li key={i}>
+                          <p className="dashboard-item-subtitle">{msg}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
           </section>
 
           {/* Invite-Codes */}
