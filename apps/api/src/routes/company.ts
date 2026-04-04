@@ -28,8 +28,7 @@ const monthQuerySchema = z.object({
 
 const createEmployeeSchema = z.object({
   name: z.string().min(2),
-  email: z.string().email(),
-  password: z.string().min(6)
+  mitarbeiternummer: z.string().min(1)
 });
 
 const employeeCredentialsPdfSchema = z.object({
@@ -420,6 +419,7 @@ router.get(
         id: true,
         name: true,
         email: true,
+        mustChangePassword: true,
         createdAt: true
       },
       orderBy: { createdAt: "desc" }
@@ -440,14 +440,15 @@ router.post(
       return res.status(400).json({ error: guard.error });
     }
 
-    const { name, email, password } = req.body;
+    const { name, mitarbeiternummer } = req.body;
 
     const company = await prisma.company.findUnique({
       where: { id: guard.companyId },
       select: {
         id: true,
         name: true,
-        code: true
+        code: true,
+        internalCode: true
       }
     });
     if (!company) {
@@ -455,34 +456,76 @@ router.post(
     }
 
     const existingUser = await prisma.user.findUnique({
-      where: { email },
+      where: { email: mitarbeiternummer },
       select: { id: true }
     });
     if (existingUser) {
-      return res.status(400).json({ error: "E-Mail ist bereits vergeben." });
+      return res.status(400).json({ error: "Mitarbeiternummer ist bereits vergeben." });
     }
 
+    const password = generateImportPassword();
     const passwordHash = await bcrypt.hash(password, 10);
     const employee = await prisma.user.create({
       data: {
         name,
-        email,
+        email: mitarbeiternummer,
         passwordHash,
         role: "CUSTOMER",
         customerType: "EMPLOYEE",
-        companyId: company.id
+        companyId: company.id,
+        mustChangePassword: true
       },
       select: {
         id: true,
         name: true,
         email: true,
+        mustChangePassword: true,
         createdAt: true
       }
     });
 
     return res.status(201).json({
       ...employee,
-      companyCode: company.code
+      username: mitarbeiternummer,
+      password,
+      companyCode: company.code,
+      internalCode: company.internalCode ?? null
+    });
+  })
+);
+
+router.get(
+  "/employees/stats",
+  authRequired,
+  requireRole("COMPANY"),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const [total, neverLoggedIn] = await Promise.all([
+      prisma.user.count({
+        where: {
+          role: "CUSTOMER",
+          customerType: "EMPLOYEE",
+          companyId: guard.companyId
+        }
+      }),
+      prisma.user.count({
+        where: {
+          role: "CUSTOMER",
+          customerType: "EMPLOYEE",
+          companyId: guard.companyId,
+          mustChangePassword: true
+        }
+      })
+    ]);
+
+    return res.json({
+      total,
+      neverLoggedIn,
+      active: total - neverLoggedIn
     });
   })
 );
