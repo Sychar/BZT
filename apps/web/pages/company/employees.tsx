@@ -620,17 +620,17 @@ export default function CompanyEmployeesPage() {
               <p className="dashboard-empty">Daten werden geladen...</p>
             ) : stats ? (
               <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-xl bg-forest/5 border border-forest/15 p-4 text-center">
-                  <p className="text-3xl font-bold text-forest">{stats.total}</p>
+                <div className="rounded-xl bg-forest/5 border border-forest/15 p-3 sm:p-4 text-center min-w-0">
+                  <p className="text-2xl sm:text-3xl font-bold text-forest">{stats.total}</p>
                   <p className="mt-1 text-xs text-ink/60">Gesamt</p>
                 </div>
-                <div className="rounded-xl bg-brand-50 border border-brand-200 p-4 text-center">
-                  <p className="text-3xl font-bold text-brand-600">{stats.active}</p>
+                <div className="rounded-xl bg-brand-50 border border-brand-200 p-3 sm:p-4 text-center min-w-0">
+                  <p className="text-2xl sm:text-3xl font-bold text-brand-600">{stats.active}</p>
                   <p className="mt-1 text-xs text-ink/60">Aktiv</p>
                 </div>
-                <div className="rounded-xl bg-neutral border border-taupe p-4 text-center">
-                  <p className="text-3xl font-bold text-ink/60">{stats.neverLoggedIn}</p>
-                  <p className="mt-1 text-xs text-ink/60">Noch nie eingeloggt</p>
+                <div className="rounded-xl bg-neutral border border-taupe p-3 sm:p-4 text-center min-w-0">
+                  <p className="text-2xl sm:text-3xl font-bold text-ink/60">{stats.neverLoggedIn}</p>
+                  <p className="mt-1 text-xs text-ink/60 break-words">Nie eingeloggt</p>
                 </div>
               </div>
             ) : null}
@@ -648,11 +648,11 @@ export default function CompanyEmployeesPage() {
             </div>
 
             {/* Interner Firmencode */}
-            <div className="flex items-center justify-between gap-4 rounded-xl bg-cream border border-ink/10 px-4 py-3">
-              <div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-cream border border-ink/10 px-4 py-3">
+              <div className="min-w-0">
                 <p className="text-xs text-ink/50 font-medium uppercase tracking-wide">Interner Firmencode</p>
                 {internalCode ? (
-                  <p className="mt-0.5 font-mono text-lg font-bold text-ink tracking-widest">{internalCode}</p>
+                  <p className="mt-0.5 font-mono text-base sm:text-lg font-bold text-ink tracking-widest break-all">{internalCode}</p>
                 ) : (
                   <p className="mt-0.5 text-sm text-ink/50">Noch nicht generiert</p>
                 )}
@@ -687,14 +687,14 @@ export default function CompanyEmployeesPage() {
             ) : employees.length === 0 ? (
               <p className="dashboard-empty">Noch keine Mitarbeiter vorhanden.</p>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-ink/10">
-                <table className="w-full text-sm">
+              <div className="overflow-hidden rounded-xl border border-ink/10">
+                <table className="w-full text-sm table-fixed">
                   <thead className="bg-cream text-ink/60">
                     <tr>
                       <th className="px-3 py-2 text-left font-medium">Name</th>
-                      <th className="px-3 py-2 text-left font-medium hidden sm:table-cell">Benutzername</th>
-                      <th className="px-3 py-2 text-left font-medium hidden md:table-cell">Status</th>
-                      <th className="px-3 py-2 text-right font-medium">Aktionen</th>
+                      <th className="px-3 py-2 text-left font-medium hidden sm:table-cell w-32">Benutzername</th>
+                      <th className="px-3 py-2 text-left font-medium hidden md:table-cell w-28">Status</th>
+                      <th className="px-3 py-2 text-right font-medium w-24 sm:w-36">Aktionen</th>
                     </tr>
                   </thead>
                   <tbody>
