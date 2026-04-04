@@ -353,7 +353,8 @@ router.post(
       data: {
         email: newEmail,
         passwordHash,
-        mustChangePassword: false
+        mustChangePassword: false,
+        tempPassword: null
       }
     });
 
