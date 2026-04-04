@@ -5,21 +5,51 @@ import { useAuth } from "../../context/AuthContext";
 import { apiFetch } from "../../lib/api";
 
 type CompanySummary = {
-  company: { id: string; name: string; code: string; isActive: boolean };
+  company: { id: string; name: string; code: string; internalCode: string | null; isActive: boolean };
 };
 
 export default function CompanyManagementPage() {
   const auth = useAuth();
   const [summary, setSummary] = useState<CompanySummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [internalCodeLoading, setInternalCodeLoading] = useState(false);
+  const [internalCodeError, setInternalCodeError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadSummary = () => {
     if (!auth.token) return;
-
     apiFetch<CompanySummary>("/company/dashboard", {}, auth.token)
       .then(setSummary)
       .catch((err) => setError((err as Error).message));
+  };
+
+  useEffect(() => {
+    loadSummary();
   }, [auth.token]);
+
+  const generateInternalCode = async (regenerate: boolean) => {
+    if (!auth.token) return;
+    setInternalCodeLoading(true);
+    setInternalCodeError(null);
+    try {
+      const endpoint = regenerate
+        ? "/company/internal-code/regenerate"
+        : "/company/internal-code/generate";
+      const data = await apiFetch<{ internalCode: string }>(
+        endpoint,
+        { method: "POST" },
+        auth.token
+      );
+      setSummary((prev) =>
+        prev
+          ? { ...prev, company: { ...prev.company, internalCode: data.internalCode } }
+          : prev
+      );
+    } catch (err) {
+      setInternalCodeError((err as Error).message);
+    } finally {
+      setInternalCodeLoading(false);
+    }
+  };
 
   return (
     <PageShell>
@@ -58,7 +88,7 @@ export default function CompanyManagementPage() {
                 <input className="dashboard-text-input" value={summary?.company.name ?? ""} readOnly />
               </div>
               <div className="settings-field">
-                <label>Firmen-Code</label>
+                <label>Firmen-Code (extern)</label>
                 <input className="dashboard-text-input" value={summary?.company.code ?? ""} readOnly />
               </div>
               <div className="settings-field">
@@ -86,6 +116,51 @@ export default function CompanyManagementPage() {
               <Link href="/company/settings" className="dashboard-ghost-btn">
                 Alte Einstellungsseite
               </Link>
+            </div>
+          </section>
+
+          {/* Interner Firmencode */}
+          <section className="dashboard-panel">
+            <div className="dashboard-panel-head">
+              <div>
+                <h2>Interner Firmencode</h2>
+                <p>Für den Mitarbeiter-Login und CSV-Import. Wird nicht öffentlich angezeigt.</p>
+              </div>
+            </div>
+
+            {internalCodeError && <p className="text-sm text-brand-700">{internalCodeError}</p>}
+
+            <div className="settings-grid">
+              <div className="settings-field">
+                <label>Aktueller interner Code</label>
+                <input
+                  className="dashboard-text-input"
+                  value={summary?.company.internalCode ?? "Noch kein Code generiert"}
+                  readOnly
+                />
+              </div>
+            </div>
+
+            <div className="dashboard-inline-actions">
+              {!summary?.company.internalCode ? (
+                <button
+                  type="button"
+                  className="dashboard-primary-btn"
+                  onClick={() => generateInternalCode(false)}
+                  disabled={internalCodeLoading}
+                >
+                  {internalCodeLoading ? "Generiere..." : "Code generieren"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="dashboard-ghost-btn"
+                  onClick={() => generateInternalCode(true)}
+                  disabled={internalCodeLoading}
+                >
+                  {internalCodeLoading ? "Generiere..." : "Code regenerieren"}
+                </button>
+              )}
             </div>
           </section>
         </div>

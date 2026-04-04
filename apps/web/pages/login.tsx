@@ -4,13 +4,14 @@ import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
-type LoginMode = "COMPANY" | "VENDOR";
+type LoginMode = "COMPANY" | "VENDOR" | "EMPLOYEE";
 
 export default function LoginPage() {
   const [mode, setMode] = useState<LoginMode | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [companyCode, setCompanyCode] = useState("");
+  const [internalCode, setInternalCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -26,15 +27,18 @@ export default function LoginPage() {
     if (queryMode === "vendor") {
       setMode("VENDOR");
     }
-
     if (queryMode === "company") {
       setMode("COMPANY");
+    }
+    if (queryMode === "employee") {
+      setMode("EMPLOYEE");
     }
   }, [router.isReady, router.query.mode]);
 
   const title = useMemo(() => {
     if (mode === "COMPANY") return "Firma Login";
     if (mode === "VENDOR") return "Lieferant Login";
+    if (mode === "EMPLOYEE") return "Mitarbeiter Login";
     return "";
   }, [mode]);
 
@@ -53,6 +57,26 @@ export default function LoginPage() {
         });
         auth.setAuth(data.token, null);
         router.push("/company/dashboard");
+        return;
+      }
+
+      if (mode === "EMPLOYEE") {
+        const body: Record<string, string> = { email, password };
+        if (internalCode.trim()) body.internalCode = internalCode.trim();
+        else if (companyCode.trim()) body.companyCode = companyCode.trim();
+
+        const data = await apiFetch<{
+          token: string;
+          vendorId?: string | null;
+          mustChangePassword?: boolean;
+        }>("/auth/login", { method: "POST", body: JSON.stringify(body) });
+
+        auth.setAuth(data.token, null);
+        if (data.mustChangePassword) {
+          router.push("/change-credentials");
+        } else {
+          router.push("/vendors");
+        }
         return;
       }
 
@@ -102,6 +126,17 @@ export default function LoginPage() {
 
             <button
               type="button"
+              className={`login-mode-btn ${mode === "EMPLOYEE" ? "is-active" : ""}`}
+              onClick={() => {
+                setMode("EMPLOYEE");
+                setError(null);
+              }}
+            >
+              Mitarbeiter Login
+            </button>
+
+            <button
+              type="button"
               className={`login-mode-btn ${mode === "VENDOR" ? "is-active" : ""}`}
               onClick={() => {
                 setMode("VENDOR");
@@ -117,9 +152,9 @@ export default function LoginPage() {
               <h2 className="login-panel-title">{title}</h2>
 
               <label className="login-label">
-                E-Mail
+                {mode === "EMPLOYEE" ? "Benutzername" : "E-Mail"}
                 <input
-                  type="email"
+                  type={mode === "EMPLOYEE" ? "text" : "email"}
                   required
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
@@ -147,6 +182,20 @@ export default function LoginPage() {
                     value={companyCode}
                     onChange={(event) => setCompanyCode(event.target.value)}
                     className="login-input"
+                  />
+                </label>
+              )}
+
+              {mode === "EMPLOYEE" && (
+                <label className="login-label">
+                  Interner Firmen-Code
+                  <input
+                    type="text"
+                    required
+                    value={internalCode}
+                    onChange={(event) => setInternalCode(event.target.value)}
+                    className="login-input"
+                    placeholder="8-stelliger Code von deiner Firma"
                   />
                 </label>
               )}

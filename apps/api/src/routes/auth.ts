@@ -6,6 +6,7 @@ import { prisma } from "../prisma";
 import { env } from "../utils/env";
 import { asyncHandler } from "../utils/asyncHandler";
 import { validateBody } from "../utils/validation";
+import { authRequired } from "../middleware/auth";
 
 const router = Router();
 
@@ -33,9 +34,15 @@ const registerVendorSchema = baseUserSchema.extend({
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6),
-  companyCode: z.string().min(2).optional()
+  email: z.string().min(1),
+  password: z.string().min(1),
+  companyCode: z.string().min(2).optional(),
+  internalCode: z.string().min(2).optional()
+});
+
+const changePasswordSchema = z.object({
+  newEmail: z.string().min(1),
+  newPassword: z.string().min(6)
 });
 
 const companyLoginSchema = z.object({
@@ -231,7 +238,7 @@ router.post(
   "/login",
   validateBody(loginSchema),
   asyncHandler(async (req, res) => {
-    const { email, password, companyCode } = req.body;
+    const { email, password, companyCode, internalCode } = req.body;
     const user = await prisma.user.findUnique({
       where: { email },
       include: { vendor: true, company: true }
@@ -251,16 +258,45 @@ router.post(
         return res.status(403).json({ error: "Private Nutzer werden nicht mehr unterstützt." });
       }
       if (!user.companyId) {
-        return res.status(400).json({ error: "Keine Firmen-Zuordnung." });
-      }
-      if (!companyCode) {
-        return res.status(400).json({ error: "Firmen-Code fehlt." });
-      }
-      if (!user.company || user.company.code !== companyCode) {
-        return res.status(401).json({ error: "Firmen-Code ungültig." });
-      }
-      if (!user.company.isActive) {
-        return res.status(403).json({ error: "Firma noch nicht aktiviert." });
+        // Firma noch nicht verknüpft – kann über internalCode zugeordnet werden
+        if (!internalCode) {
+          return res.status(400).json({ error: "Firmen-Code oder interner Code fehlt." });
+        }
+        const company = await prisma.company.findUnique({
+          where: { internalCode }
+        });
+        if (!company) {
+          return res.status(401).json({ error: "Interner Firmen-Code ungültig." });
+        }
+        if (!company.isActive) {
+          return res.status(403).json({ error: "Firma noch nicht aktiviert." });
+        }
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { companyId: company.id }
+        });
+        user.companyId = company.id;
+        user.company = company;
+      } else if (internalCode) {
+        // Login mit internem Code statt externem Code
+        const company = await prisma.company.findUnique({
+          where: { internalCode }
+        });
+        if (!company || company.id !== user.companyId) {
+          return res.status(401).json({ error: "Interner Firmen-Code ungültig." });
+        }
+        if (!company.isActive) {
+          return res.status(403).json({ error: "Firma noch nicht aktiviert." });
+        }
+      } else if (companyCode) {
+        if (!user.company || user.company.code !== companyCode) {
+          return res.status(401).json({ error: "Firmen-Code ungültig." });
+        }
+        if (!user.company.isActive) {
+          return res.status(403).json({ error: "Firma noch nicht aktiviert." });
+        }
+      } else {
+        return res.status(400).json({ error: "Firmen-Code oder interner Code fehlt." });
       }
     }
     const token = signToken({
@@ -272,7 +308,56 @@ router.post(
       customerType: user.customerType ? user.customerType : null,
       companyId: user.companyId ? user.companyId : null
     });
-    return res.json({ token, vendorId: user.vendor?.id ?? null });
+    const response: Record<string, unknown> = { token, vendorId: user.vendor?.id ?? null };
+    if (user.mustChangePassword) {
+      response.mustChangePassword = true;
+    }
+    return res.json(response);
+  })
+);
+
+router.post(
+  "/change-password",
+  authRequired,
+  validateBody(changePasswordSchema),
+  asyncHandler(async (req, res) => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Nicht autorisiert." });
+    }
+
+    const { newEmail, newPassword } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, mustChangePassword: true }
+    });
+    if (!user) {
+      return res.status(404).json({ error: "Benutzer nicht gefunden." });
+    }
+
+    // Prüfen ob neuer Benutzername bereits vergeben (falls geändert)
+    if (newEmail !== user.email) {
+      const existing = await prisma.user.findUnique({
+        where: { email: newEmail },
+        select: { id: true }
+      });
+      if (existing) {
+        return res.status(400).json({ error: "Benutzername bereits vergeben." });
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        email: newEmail,
+        passwordHash,
+        mustChangePassword: false
+      }
+    });
+
+    return res.json({ ok: true });
   })
 );
 
