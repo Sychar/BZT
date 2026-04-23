@@ -33,6 +33,31 @@ const registerVendorSchema = baseUserSchema.extend({
   })
 });
 
+const registrationRequestSchema = z
+  .object({
+    requestType: z.enum(["COMPANY", "VENDOR"]),
+    vendorType: z.enum(["BAECKER", "METZGER"]).optional(),
+    businessName: z.string().min(2),
+    contactName: z.string().min(2),
+    email: z.string().email(),
+    phone: z.string().min(5),
+    address: z.string().min(5)
+  })
+  .superRefine((value, ctx) => {
+    if (value.requestType === "VENDOR" && !value.vendorType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Bitte Lieferantentyp auswählen."
+      });
+    }
+    if (value.requestType === "COMPANY" && value.vendorType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Vendor-Typ ist nur für Lieferanten erlaubt."
+      });
+    }
+  });
+
 const loginSchema = z.object({
   email: z.string().min(1),
   password: z.string().min(1),
@@ -65,6 +90,39 @@ const signToken = (payload: {
   customerType?: "EMPLOYEE" | "PRIVATE" | null;
   companyId?: string | null;
 }) => jwt.sign(payload, env.JWT_SECRET, { expiresIn: "7d" });
+
+router.post(
+  "/registration-request",
+  validateBody(registrationRequestSchema),
+  asyncHandler(async (req, res) => {
+    const {
+      requestType,
+      vendorType,
+      businessName,
+      contactName,
+      email,
+      phone,
+      address
+    } = req.body;
+
+    const created = await prisma.registrationRequest.create({
+      data: {
+        requestType,
+        vendorType: requestType === "VENDOR" ? vendorType : null,
+        businessName,
+        contactName,
+        email,
+        phone,
+        address
+      }
+    });
+
+    return res.status(201).json({
+      id: created.id,
+      status: created.status
+    });
+  })
+);
 
 router.post(
   "/register",

@@ -74,11 +74,8 @@ export default function Home() {
               vorbestellen, freigeben, abholen.
             </p>
             <div className="hero-banner-actions">
-              <Link href="/register" className="btn-primary">
-                Jetzt starten
-              </Link>
-              <Link href="/vendors" className="btn-secondary">
-                Anbieter entdecken
+              <Link href="/register-request" className="btn-primary">
+                Registrieren &amp; Anfrage senden
               </Link>
             </div>
           </div>
@@ -159,8 +156,8 @@ export default function Home() {
         <section className="landing-cta">
           <h2>Bereit für den Start?</h2>
           <p>Starte jetzt mit Firmen-Code, Anbieter-Freigabe und digitaler Vorbestellung.</p>
-          <Link href="/register" className="btn-primary">
-            Kostenlos registrieren
+          <Link href="/register-request" className="btn-primary">
+            Registrieren &amp; Anfrage senden
           </Link>
         </section>
       </div>

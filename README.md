@@ -71,6 +71,7 @@ Monorepo für eine Vorbestell-Plattform für Bäckerei und Metzgerei. Mitarbeite
 **Wichtige Endpoints (MVP)**
 - `POST /auth/register` (Mitarbeiter mit Firmen-Code)
 - `POST /auth/register-vendor` (Anbieter)
+- `POST /auth/registration-request` (öffentliche Anfrage: Firma oder Lieferant)
 - `POST /auth/login` (Mitarbeiter, Lieferant)
 - `POST /auth/company/login` (Firma)
 - `POST /auth/admin/login` (neutraler Admin)

@@ -62,6 +62,16 @@ enum ProductCategory {
   SONSTIGES
 }
 
+enum RegistrationRequestType {
+  COMPANY
+  VENDOR
+}
+
+enum RegistrationRequestStatus {
+  NEW
+  PROCESSED
+}
+
 model User {
   id                 String   @id @default(uuid())
   name               String
@@ -322,4 +332,21 @@ model Reservation {
 
   user   User   @relation(fields: [userId], references: [id])
   vendor Vendor @relation(fields: [vendorId], references: [id])
+}
+
+model RegistrationRequest {
+  id           String                    @id @default(uuid())
+  requestType  RegistrationRequestType
+  vendorType   VendorType?
+  businessName String
+  contactName  String
+  email        String
+  phone        String
+  address      String
+  status       RegistrationRequestStatus @default(NEW)
+  createdAt    DateTime                  @default(now())
+  processedAt  DateTime?
+
+  @@index([createdAt])
+  @@index([status, createdAt])
 }

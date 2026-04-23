@@ -18,6 +18,7 @@ const truncateAll = async () => {
   await prisma.vendor.deleteMany();
   await prisma.user.deleteMany();
   await prisma.company.deleteMany();
+  await prisma.registrationRequest.deleteMany();
 };
 
 beforeAll(async () => {
