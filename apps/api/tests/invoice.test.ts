@@ -65,6 +65,17 @@ const createInvoiceFixture = async () => {
     }
   });
 
+  const secondEmployee = await prisma.user.create({
+    data: {
+      name: "Mitarbeiter B",
+      email: `employee-b-${suffix}@example.com`,
+      passwordHash: "hashed",
+      role: "CUSTOMER",
+      customerType: "EMPLOYEE",
+      companyId: company.id
+    }
+  });
+
   const createdAt = DateTime.fromISO("2026-04-10", { zone: "Europe/Berlin" }).toUTC().toJSDate();
 
   await prisma.order.create({
@@ -79,7 +90,7 @@ const createInvoiceFixture = async () => {
     }
   });
 
-  return { vendorUser, vendor, company };
+  return { vendorUser, vendor, company, employee, secondEmployee };
 };
 
 describe("Vendor invoice sending", () => {
@@ -171,5 +182,63 @@ describe("Vendor invoice sending", () => {
 
     expect(ownList.body).toHaveLength(1);
     expect(otherList.body).toHaveLength(0);
+  });
+
+  it("returns employee invoice monthly summary for companies", async () => {
+    const { company } = await createInvoiceFixture();
+    const companyToken = signToken({ userId: "company-admin", role: "COMPANY", companyId: company.id });
+
+    const response = await request(app)
+      .get("/company/invoices/employees?month=2026-04")
+      .set("Authorization", `Bearer ${companyToken}`)
+      .expect(200);
+
+    expect(response.body.month).toBe("2026-04");
+    expect(response.body.employees).toHaveLength(2);
+
+    const employeeWithOrders = response.body.employees.find(
+      (entry: { employeeName: string }) => entry.employeeName === "Mitarbeiter A"
+    );
+    const employeeWithoutOrders = response.body.employees.find(
+      (entry: { employeeName: string }) => entry.employeeName === "Mitarbeiter B"
+    );
+
+    expect(employeeWithOrders).toBeDefined();
+    expect(employeeWithOrders.ordersCount).toBe(1);
+    expect(employeeWithOrders.positionsCount).toBe(2);
+    expect(employeeWithOrders.totalAmount).toBe(5);
+
+    expect(employeeWithoutOrders).toBeDefined();
+    expect(employeeWithoutOrders.ordersCount).toBe(0);
+    expect(employeeWithoutOrders.positionsCount).toBe(0);
+    expect(employeeWithoutOrders.totalAmount).toBe(0);
+  });
+
+  it("creates employee invoice pdf and restricts cross-company access", async () => {
+    const { company, employee } = await createInvoiceFixture();
+    const companyToken = signToken({ userId: "company-admin", role: "COMPANY", companyId: company.id });
+
+    await request(app)
+      .get(`/company/invoices/employees/${employee.id}/download?month=2026-04`)
+      .set("Authorization", `Bearer ${companyToken}`)
+      .expect(200)
+      .expect("Content-Type", /application\/pdf/);
+
+    const otherCompany = await prisma.company.create({
+      data: {
+        name: "Firma West",
+        code: `FIRMA-WEST-${Date.now()}`
+      }
+    });
+    const otherCompanyToken = signToken({
+      userId: "other-company-admin",
+      role: "COMPANY",
+      companyId: otherCompany.id
+    });
+
+    await request(app)
+      .get(`/company/invoices/employees/${employee.id}/download?month=2026-04`)
+      .set("Authorization", `Bearer ${otherCompanyToken}`)
+      .expect(404);
   });
 });

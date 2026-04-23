@@ -397,6 +397,17 @@ export default function CompanyEmployeesPage() {
     return true;
   });
 
+  const activeEmployeesCount = employees.filter((employee) => !employee.mustChangePassword).length;
+  const neverLoggedInCount = employees.length - activeEmployeesCount;
+
+  const filterButtonClass = (filter: "ALL" | "ACTIVE" | "NEVER") =>
+    [
+      "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition",
+      statusFilter === filter
+        ? "bg-brand-500 text-paper shadow-[0_8px_20px_rgba(198,90,58,0.25)]"
+        : "bg-paper text-ink/80 hover:bg-cream"
+    ].join(" ");
+
   return (
     <PageShell>
       <div className="dashboard-shell overflow-x-hidden">
@@ -650,128 +661,141 @@ export default function CompanyEmployeesPage() {
             ) : null}
           </section>
 
-          {/* ── Card 4: Mitarbeiterliste verwalten ── */}
-          <section className="dashboard-panel flex flex-col gap-4">
-            <div className="dashboard-panel-head">
+          {/* Card 4: Mitarbeiterliste verwalten */}
+          <section className="dashboard-panel relative flex flex-col gap-5 overflow-hidden">
+            <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-brand-100/50 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-24 -left-14 h-44 w-44 rounded-full bg-forest/10 blur-3xl" />
+
+            <div className="dashboard-panel-head relative">
               <div className="w-full overflow-hidden">
-                <h2 className="flex items-center gap-2 text-base sm:text-lg font-semibold break-words w-full overflow-hidden">
-                  <span>👥</span> Mitarbeiterliste
-                </h2>
-                <p>Namen bearbeiten oder Mitarbeiter löschen.</p>
+                <h2 className="text-base font-semibold sm:text-lg">Mitarbeiterliste</h2>
+                <p>Namen bearbeiten, Status sehen und Mitarbeiter sauber verwalten.</p>
               </div>
             </div>
 
-            {/* Interner Firmencode */}
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-cream border border-ink/10 px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-xs text-ink/50 font-medium uppercase tracking-wide">Interner Firmencode</p>
-                {internalCode ? (
-                  <p className="mt-0.5 font-mono text-base sm:text-lg font-bold text-ink tracking-widest break-all">{internalCode}</p>
-                ) : (
-                  <p className="mt-0.5 text-sm text-ink/50">Noch nicht generiert</p>
-                )}
+            <div className="relative rounded-2xl border border-brand-200/70 bg-gradient-to-r from-brand-50 via-paper to-cream px-4 py-4 sm:px-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700/80">
+                    Interner Firmencode
+                  </p>
+                  {internalCode ? (
+                    <p className="mt-1 break-all font-mono text-lg font-bold tracking-[0.2em] text-ink sm:text-xl">
+                      {internalCode}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-sm text-ink/55">Noch nicht generiert</p>
+                  )}
+                  <p className="mt-1 text-xs text-ink/60">Dieser Code wird beim Mitarbeiter-Login verwendet.</p>
+                </div>
+                <button
+                  type="button"
+                  className="dashboard-ghost-btn shrink-0 border-brand-300/80 bg-paper/90 text-ink hover:border-brand-500 hover:bg-paper"
+                  onClick={regenerateCode}
+                  disabled={regeneratingCode}
+                >
+                  {regeneratingCode ? "Generiere..." : internalCode ? "Neu generieren" : "Generieren"}
+                </button>
               </div>
-              <button
-                type="button"
-                className="dashboard-ghost-btn shrink-0"
-                onClick={regenerateCode}
-                disabled={regeneratingCode}
-              >
-                {regeneratingCode ? "Generiere..." : internalCode ? "Neu generieren" : "Generieren"}
-              </button>
             </div>
             {codeError && <p className="text-sm text-brand-700">{codeError}</p>}
             {employeesError && <p className="text-sm text-brand-700">{employeesError}</p>}
 
-            {/* Export PDF Button */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-ink/10 bg-cream/70 p-1.5">
+                <button type="button" className={filterButtonClass("ALL")} onClick={() => setStatusFilter("ALL")}>
+                  Alle
+                  <span className="rounded-full bg-paper/70 px-2 py-0.5 text-xs font-semibold text-ink/70">
+                    {employees.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={filterButtonClass("ACTIVE")}
+                  onClick={() => setStatusFilter("ACTIVE")}
+                >
+                  Aktiv
+                  <span className="rounded-full bg-paper/70 px-2 py-0.5 text-xs font-semibold text-ink/70">
+                    {activeEmployeesCount}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={filterButtonClass("NEVER")}
+                  onClick={() => setStatusFilter("NEVER")}
+                >
+                  Nie eingeloggt
+                  <span className="rounded-full bg-paper/70 px-2 py-0.5 text-xs font-semibold text-ink/70">
+                    {neverLoggedInCount}
+                  </span>
+                </button>
+              </div>
+
               <button
                 type="button"
-                className="dashboard-ghost-btn px-3 py-2"
+                className="dashboard-ghost-btn border-ink/20 bg-paper px-4 py-2"
                 onClick={downloadExportPdf}
                 disabled={exportPdfLoading || employees.length === 0}
               >
-                {exportPdfLoading ? "Erstelle PDF..." : "📄 Zugangsdaten exportieren (PDF)"}
+                {exportPdfLoading ? "Erstelle PDF..." : "Zugangsdaten exportieren (PDF)"}
               </button>
-              {exportPdfError && <p className="text-sm text-brand-700">{exportPdfError}</p>}
             </div>
-
-            {!loadingEmployees && employees.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={`dashboard-ghost-btn px-3 py-2 ${statusFilter === "ALL" ? "is-active" : ""}`}
-                  onClick={() => setStatusFilter("ALL")}
-                >
-                  Alle ({employees.length})
-                </button>
-                <button
-                  type="button"
-                  className={`dashboard-ghost-btn px-3 py-2 ${statusFilter === "ACTIVE" ? "is-active" : ""}`}
-                  onClick={() => setStatusFilter("ACTIVE")}
-                >
-                  Aktiv ({employees.filter((employee) => !employee.mustChangePassword).length})
-                </button>
-                <button
-                  type="button"
-                  className={`dashboard-ghost-btn px-3 py-2 ${statusFilter === "NEVER" ? "is-active" : ""}`}
-                  onClick={() => setStatusFilter("NEVER")}
-                >
-                  Nie eingeloggt ({employees.filter((employee) => employee.mustChangePassword).length})
-                </button>
-              </div>
-            )}
+            {exportPdfError && <p className="text-sm text-brand-700">{exportPdfError}</p>}
 
             {loadingEmployees ? (
               <p className="dashboard-empty">Daten werden geladen...</p>
             ) : filteredEmployees.length === 0 ? (
-              <p className="dashboard-empty">Noch keine Mitarbeiter vorhanden.</p>
+              <p className="dashboard-empty">
+                {statusFilter === "ALL"
+                  ? "Noch keine Mitarbeiter vorhanden."
+                  : "Keine Mitarbeiter in diesem Status gefunden."}
+              </p>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-ink/10">
-                <table className="w-full text-sm table-fixed">
-                  <thead className="bg-cream text-ink/60">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium">Name</th>
-                      <th className="px-3 py-2 text-left font-medium hidden sm:table-cell w-32">Benutzername</th>
-                      <th className="px-3 py-2 text-left font-medium hidden md:table-cell w-28">Status</th>
-                      <th className="px-3 py-2 text-right font-medium w-24 sm:w-36">Aktionen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredEmployees.map((emp) => (
-                      <tr key={emp.id} className="border-t border-ink/5 hover:bg-cream/50 transition-colors">
-                        <td className="px-3 py-2 font-medium text-ink">{emp.name}</td>
-                        <td className="px-3 py-2 font-mono text-xs text-ink/60 hidden sm:table-cell">{emp.email}</td>
-                        <td className="px-3 py-2 hidden md:table-cell">
+              <div className="relative space-y-3">
+                {filteredEmployees.map((emp) => (
+                  <article
+                    key={emp.id}
+                    className="group rounded-2xl border border-ink/10 bg-paper/95 px-4 py-4 shadow-[0_8px_22px_rgba(28,28,28,0.04)] transition hover:-translate-y-[1px] hover:border-ink/20 hover:shadow-[0_14px_30px_rgba(28,28,28,0.08)]"
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-base font-semibold text-ink">{emp.name}</h3>
                           {emp.mustChangePassword ? (
-                            <span className="dashboard-status is-inactive">Noch nicht eingeloggt</span>
+                            <span className="inline-flex rounded-full bg-neutral px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/80">
+                              Noch nicht eingeloggt
+                            </span>
                           ) : (
-                            <span className="dashboard-status is-active">Aktiv</span>
+                            <span className="inline-flex rounded-full bg-forest px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-paper">
+                              Aktiv
+                            </span>
                           )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex flex-col gap-1 sm:flex-row sm:justify-end sm:gap-2">
-                            <button
-                              type="button"
-                              className="dashboard-ghost-btn px-3 py-2 w-full sm:w-auto"
-                              onClick={() => openEditModal(emp)}
-                            >
-                              Bearbeiten
-                            </button>
-                            <button
-                              type="button"
-                              className="dashboard-ghost-btn px-3 py-2 w-full sm:w-auto"
-                              onClick={() => deleteEmployee(emp.id, emp.name)}
-                              disabled={deletingId === emp.id}
-                            >
-                              {deletingId === emp.id ? "..." : "Löschen"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                        <p className="mt-1 break-all font-mono text-xs text-ink/60">
+                          Benutzername: {emp.email}
+                        </p>
+                      </div>
+
+                      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                        <button
+                          type="button"
+                          className="dashboard-ghost-btn w-full px-3 py-2 sm:w-auto"
+                          onClick={() => openEditModal(emp)}
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          type="button"
+                          className="inline-flex w-full items-center justify-center rounded-full border border-brand-200 bg-paper px-4 py-2 text-sm text-brand-700 transition hover:border-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                          onClick={() => deleteEmployee(emp.id, emp.name)}
+                          disabled={deletingId === emp.id}
+                        >
+                          {deletingId === emp.id ? "Lösche..." : "Löschen"}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
               </div>
             )}
           </section>

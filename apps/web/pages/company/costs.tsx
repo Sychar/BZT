@@ -35,6 +35,20 @@ type ReceivedInvoice = {
   positionsCount: number;
 };
 
+type EmployeeInvoiceSummary = {
+  employeeId: string;
+  employeeName: string;
+  username: string;
+  ordersCount: number;
+  positionsCount: number;
+  totalAmount: number;
+};
+
+type EmployeeInvoicesResponse = {
+  month: string;
+  employees: EmployeeInvoiceSummary[];
+};
+
 const currentMonth = new Date().toISOString().slice(0, 7);
 
 export default function CompanyCostsPage() {
@@ -42,10 +56,12 @@ export default function CompanyCostsPage() {
   const [month, setMonth] = useState(currentMonth);
   const [data, setData] = useState<CompanyInvoicesResponse | null>(null);
   const [receivedInvoices, setReceivedInvoices] = useState<ReceivedInvoice[]>([]);
+  const [employeeInvoices, setEmployeeInvoices] = useState<EmployeeInvoiceSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
+  const [downloadingEmployeeInvoiceId, setDownloadingEmployeeInvoiceId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!auth.token) return;
@@ -54,12 +70,14 @@ export default function CompanyCostsPage() {
       setLoading(true);
       setError(null);
       try {
-        const [summary, received] = await Promise.all([
+        const [summary, received, employeeInvoiceData] = await Promise.all([
           apiFetch<CompanyInvoicesResponse>(`/company/invoices?month=${month}`, {}, auth.token),
-          apiFetch<ReceivedInvoice[]>(`/company/invoices/received?month=${month}`, {}, auth.token)
+          apiFetch<ReceivedInvoice[]>(`/company/invoices/received?month=${month}`, {}, auth.token),
+          apiFetch<EmployeeInvoicesResponse>(`/company/invoices/employees?month=${month}`, {}, auth.token)
         ]);
         setData(summary);
         setReceivedInvoices(received);
+        setEmployeeInvoices(employeeInvoiceData.employees);
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -123,6 +141,41 @@ export default function CompanyCostsPage() {
       setError((err as Error).message);
     } finally {
       setDownloadingInvoiceId(null);
+    }
+  };
+
+  const downloadEmployeeInvoice = async (invoice: EmployeeInvoiceSummary) => {
+    if (!auth.token) return;
+
+    setDownloadingEmployeeInvoiceId(invoice.employeeId);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${API_URL}/company/invoices/employees/${invoice.employeeId}/download?month=${month}`,
+        {
+          headers: { Authorization: `Bearer ${auth.token}` }
+        }
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error((payload as { error?: string }).error ?? "Download fehlgeschlagen.");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      const safeName = invoice.employeeName
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-_]/g, "");
+      anchor.download = `mitarbeiter-rechnung-${safeName || "mitarbeiter"}-${month}.pdf`;
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDownloadingEmployeeInvoiceId(null);
     }
   };
 
@@ -249,6 +302,57 @@ export default function CompanyCostsPage() {
                             disabled={downloadingInvoiceId === invoice.id}
                           >
                             {downloadingInvoiceId === invoice.id ? "Download..." : "PDF"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="dashboard-panel">
+            <div className="dashboard-panel-head">
+              <div>
+                <h2>Mitarbeiter-Rechnungen</h2>
+                <p>Eigene Monatsrechnung pro Mitarbeiter als PDF erstellen.</p>
+              </div>
+            </div>
+
+            {loading ? (
+              <p className="dashboard-empty">Mitarbeiter-Rechnungen werden geladen...</p>
+            ) : employeeInvoices.length === 0 ? (
+              <p className="dashboard-empty">Keine Mitarbeiter fuer diesen Monat gefunden.</p>
+            ) : (
+              <div className="dashboard-table-wrap">
+                <table className="dashboard-table">
+                  <thead>
+                    <tr>
+                      <th>Mitarbeiter</th>
+                      <th>Benutzername</th>
+                      <th>Bestellungen</th>
+                      <th>Positionen</th>
+                      <th>Summe</th>
+                      <th>Aktion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {employeeInvoices.map((invoice) => (
+                      <tr key={invoice.employeeId}>
+                        <td>{invoice.employeeName}</td>
+                        <td className="font-mono text-xs">{invoice.username}</td>
+                        <td>{invoice.ordersCount}</td>
+                        <td>{invoice.positionsCount}</td>
+                        <td>{invoice.totalAmount.toFixed(2)} EUR</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="dashboard-ghost-btn"
+                            onClick={() => downloadEmployeeInvoice(invoice)}
+                            disabled={downloadingEmployeeInvoiceId === invoice.employeeId}
+                          >
+                            {downloadingEmployeeInvoiceId === invoice.employeeId ? "Download..." : "PDF"}
                           </button>
                         </td>
                       </tr>

@@ -225,6 +225,121 @@ const summarizeInvoicesByVendor = (orders: CompanyOrderRecord[]) => {
   };
 };
 
+type EmployeeInvoiceSummary = {
+  employeeId: string;
+  employeeName: string;
+  username: string;
+  ordersCount: number;
+  positionsCount: number;
+  totalAmount: number;
+};
+
+type EmployeeInvoiceOrderRow = {
+  orderId: string;
+  createdAt: Date;
+  pickupWindow: string;
+  vendorName: string;
+  positionsCount: number;
+  totalAmount: number;
+};
+
+const summarizeInvoicesByEmployee = (
+  employees: Array<{ id: string; name: string; email: string }>,
+  orders: CompanyOrderRecord[]
+) => {
+  const employeeMap = new Map<string, EmployeeInvoiceSummary>();
+
+  employees.forEach((employee) => {
+    employeeMap.set(employee.id, {
+      employeeId: employee.id,
+      employeeName: employee.name,
+      username: employee.email,
+      ordersCount: 0,
+      positionsCount: 0,
+      totalAmount: 0
+    });
+  });
+
+  orders.forEach((order) => {
+    const employeeEntry = employeeMap.get(order.user.id);
+    if (!employeeEntry) {
+      return;
+    }
+
+    const orderPositions = order.items.reduce((sum, item) => sum + item.qty, 0);
+    const orderTotal = order.items.reduce(
+      (sum, item) => sum + Number(item.unitPrice) * item.qty,
+      0
+    );
+
+    employeeEntry.ordersCount += 1;
+    employeeEntry.positionsCount += orderPositions;
+    employeeEntry.totalAmount += orderTotal;
+  });
+
+  return Array.from(employeeMap.values()).sort((a, b) =>
+    a.employeeName.localeCompare(b.employeeName, "de")
+  );
+};
+
+const buildEmployeeInvoicePdf = (params: {
+  invoiceNo: string;
+  periodLabel: string;
+  companyName: string;
+  employeeName: string;
+  employeeUsername: string;
+  rows: EmployeeInvoiceOrderRow[];
+  ordersCount: number;
+  positionsCount: number;
+  totalAmount: number;
+}) =>
+  new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 42 });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    doc.fontSize(20).text("Mitarbeiter-Rechnung");
+    doc.moveDown(0.4);
+    doc.fontSize(11).text(`Rechnungsnummer: ${params.invoiceNo}`);
+    doc.text(`Monat: ${params.periodLabel}`);
+    doc.moveDown(0.6);
+
+    doc.text(`Firma: ${params.companyName}`);
+    doc.text(`Mitarbeiter: ${params.employeeName}`);
+    doc.text(`Benutzername: ${params.employeeUsername}`);
+    doc.moveDown(0.8);
+
+    doc.fontSize(12).text("Bestellungen", { underline: true });
+    doc.moveDown(0.4);
+
+    if (params.rows.length === 0) {
+      doc.fontSize(11).text("Keine Bestellungen im gewaehlten Zeitraum.");
+    } else {
+      params.rows.forEach((row, index) => {
+        const createdAt = DateTime.fromJSDate(row.createdAt, { zone: TIMEZONE }).toFormat("dd.MM.yyyy");
+        doc
+          .fontSize(10)
+          .text(
+            `${index + 1}. ${createdAt} | ${row.vendorName} | Abholung ${row.pickupWindow} | Positionen ${row.positionsCount} | ${row.totalAmount.toFixed(2)} EUR`
+          );
+        doc.moveDown(0.2);
+      });
+    }
+
+    doc.moveDown(0.8);
+    doc.fontSize(12).text("Zusammenfassung", { underline: true });
+    doc.moveDown(0.4);
+    doc.fontSize(11).text(`Anzahl Bestellungen: ${params.ordersCount}`);
+    doc.text(`Anzahl Positionen: ${params.positionsCount}`);
+    doc.fontSize(13).text(`Gesamtbetrag: ${params.totalAmount.toFixed(2)} EUR`);
+
+    doc.moveDown(1);
+    doc.fontSize(9).fillColor("#64748b").text("Erstellt durch BZT Firmenportal");
+    doc.end();
+  });
+
 const csvEscape = (value: string | number | null) => {
   const raw = value === null ? "" : String(value);
   if (/[",\n]/.test(raw)) {
@@ -944,6 +1059,153 @@ router.get(
       totalAmount: summary.totalAmount,
       vendors: summary.vendors
     });
+  })
+);
+
+router.get(
+  "/invoices/employees",
+  authRequired,
+  requireRole("COMPANY"),
+  validateQuery(monthQuerySchema),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const monthParam = (req.query as { month?: string }).month;
+    const month = parseMonth(monthParam);
+    if (!month) {
+      return res.status(400).json({ error: "Monat ungueltig." });
+    }
+
+    const [employees, monthOrders] = await Promise.all([
+      prisma.user.findMany({
+        where: {
+          role: "CUSTOMER",
+          customerType: "EMPLOYEE",
+          companyId: guard.companyId
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true
+        },
+        orderBy: { name: "asc" }
+      }),
+      buildOrdersForMonth(guard.companyId, month)
+    ]);
+
+    const employeeSummaries = summarizeInvoicesByEmployee(employees, monthOrders.orders);
+
+    return res.json({
+      month: monthOrders.start.toFormat("yyyy-MM"),
+      employees: employeeSummaries
+    });
+  })
+);
+
+router.get(
+  "/invoices/employees/:employeeId/download",
+  authRequired,
+  requireRole("COMPANY"),
+  validateQuery(monthQuerySchema),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const monthParam = (req.query as { month?: string }).month;
+    const month = parseMonth(monthParam);
+    if (!month) {
+      return res.status(400).json({ error: "Monat ungueltig." });
+    }
+
+    const [company, employee] = await Promise.all([
+      prisma.company.findUnique({
+        where: { id: guard.companyId },
+        select: { id: true, name: true }
+      }),
+      prisma.user.findFirst({
+        where: {
+          id: req.params.employeeId,
+          role: "CUSTOMER",
+          customerType: "EMPLOYEE",
+          companyId: guard.companyId
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      })
+    ]);
+
+    if (!company) {
+      return res.status(404).json({ error: "Firma nicht gefunden." });
+    }
+    if (!employee) {
+      return res.status(404).json({ error: "Mitarbeiter nicht gefunden." });
+    }
+
+    const monthStart = month.startOf("month");
+    const monthEnd = monthStart.plus({ months: 1 });
+    const employeeOrders = await prisma.order.findMany({
+      where: {
+        ...buildOrdersWhere(guard.companyId, monthStart, monthEnd),
+        userId: employee.id
+      },
+      include: {
+        items: { include: { product: true } },
+        vendor: true,
+        user: true
+      },
+      orderBy: { createdAt: "asc" }
+    });
+
+    const rows: EmployeeInvoiceOrderRow[] = employeeOrders.map((order) => ({
+      orderId: order.id,
+      createdAt: order.createdAt,
+      pickupWindow: order.pickupWindow,
+      vendorName: order.vendor.name,
+      positionsCount: order.items.reduce((sum, item) => sum + item.qty, 0),
+      totalAmount: order.items.reduce(
+        (sum, item) => sum + Number(item.unitPrice) * item.qty,
+        0
+      )
+    }));
+
+    const ordersCount = rows.length;
+    const positionsCount = rows.reduce((sum, row) => sum + row.positionsCount, 0);
+    const totalAmount = rows.reduce((sum, row) => sum + row.totalAmount, 0);
+    const periodLabel = monthStart.toFormat("yyyy-MM");
+    const invoiceNo = `EMP-INV-${monthStart.toFormat("yyyyMM")}-${employee.id.slice(0, 6).toUpperCase()}`;
+
+    const pdfBuffer = await buildEmployeeInvoicePdf({
+      invoiceNo,
+      periodLabel,
+      companyName: company.name,
+      employeeName: employee.name,
+      employeeUsername: employee.email,
+      rows,
+      ordersCount,
+      positionsCount,
+      totalAmount
+    });
+
+    const safeEmployeeName = employee.name
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-_]/g, "");
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=\"mitarbeiter-rechnung-${safeEmployeeName || "mitarbeiter"}-${periodLabel}.pdf\"`
+    );
+
+    return res.send(pdfBuffer);
   })
 );
 

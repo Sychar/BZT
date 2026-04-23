@@ -88,6 +88,8 @@ Monorepo für eine Vorbestell-Plattform für Bäckerei und Metzgerei. Mitarbeite
 - `GET /company/orders/export`
 - `GET /company/invoices/received` (empfangene Lieferanten-Rechnungen pro Monat)
 - `GET /company/invoices/received/:id/download` (Rechnungs-PDF herunterladen)
+- `GET /company/invoices/employees` (Monatsübersicht je Mitarbeiter inkl. Summen)
+- `GET /company/invoices/employees/:employeeId/download` (Mitarbeiter-Rechnung als PDF für einen Monat)
 - `GET /admin/vendor-requests`
 - `POST /admin/vendor-requests/:vendorId/:companyId/approve`
 - `DELETE /admin/vendor-requests/:vendorId/:companyId`
