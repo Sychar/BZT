@@ -96,6 +96,7 @@ model Company {
   users   User[]
   vendorLinks VendorCompany[]
   invites CompanyInvite[]
+  invoices CompanyInvoice[]
 }
 
 model CompanyInvite {
@@ -130,6 +131,7 @@ model Vendor {
   orders   Order[]
   batches  DailyBatch[]
   menus    DailyMenu[]
+  invoices CompanyInvoice[]
   restaurantOrders RestaurantOrder[]
   reservations     Reservation[]
 }
@@ -146,6 +148,30 @@ model VendorCompany {
   company Company @relation(fields: [companyId], references: [id])
 
   @@id([vendorId, companyId])
+}
+
+model CompanyInvoice {
+  id                  String   @id @default(uuid())
+  vendorId            String
+  companyId           String
+  periodMonth         DateTime
+  invoiceNo           String
+  vendorNameSnapshot  String
+  companyNameSnapshot String
+  employeeBreakdown   Json
+  ordersCount         Int
+  positionsCount      Int
+  totalAmount         Decimal  @db.Decimal(10, 2)
+  pdfPath             String
+  sentAt              DateTime
+  createdAt           DateTime @default(now())
+
+  vendor  Vendor  @relation(fields: [vendorId], references: [id])
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([vendorId, companyId, periodMonth])
+  @@index([vendorId, periodMonth])
+  @@index([companyId, periodMonth])
 }
 
 model Product {

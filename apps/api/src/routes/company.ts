@@ -1,6 +1,8 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import { DateTime } from "luxon";
+import path from "path";
+import fs from "fs/promises";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import PDFDocument from "pdfkit";
@@ -73,6 +75,16 @@ const parseMonth = (value?: string) => {
     return null;
   }
   return parsed;
+};
+
+const COMPANY_INVOICE_ROOT = path.resolve(process.cwd(), "apps/api/uploads/company-invoices");
+
+const resolveStoredInvoicePath = (storedPath: string) => {
+  const resolved = path.resolve(COMPANY_INVOICE_ROOT, storedPath);
+  if (!resolved.startsWith(COMPANY_INVOICE_ROOT)) {
+    throw new Error("Ungueltiger Dateipfad.");
+  }
+  return resolved;
 };
 
 const getCompanyId = (companyId?: string | null): CompanyGuard => {
@@ -326,7 +338,7 @@ router.get(
   requireRole("COMPANY"),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    if (!guard.ok || !guard.companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
@@ -406,7 +418,7 @@ router.get(
   requireRole("COMPANY"),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    if (!guard.ok || !guard.companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
@@ -437,7 +449,7 @@ router.post(
   validateBody(createEmployeeSchema),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    if (!guard.ok || !guard.companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
@@ -653,7 +665,7 @@ router.post(
   validateBody(employeeCredentialsPdfSchema),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    if (!guard.ok || !guard.companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
@@ -880,7 +892,7 @@ router.get(
   requireRole("COMPANY"),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    if (!guard.ok || !guard.companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
@@ -910,7 +922,7 @@ router.get(
   validateQuery(monthQuerySchema),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    if (!guard.ok || !guard.companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
@@ -942,7 +954,7 @@ router.get(
   validateQuery(monthQuerySchema),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    if (!guard.ok || !guard.companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
@@ -1008,13 +1020,102 @@ router.get(
 );
 
 router.get(
+  "/invoices/received",
+  authRequired,
+  requireRole("COMPANY"),
+  validateQuery(monthQuerySchema),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const monthParam = (req.query as { month?: string }).month;
+    const month = parseMonth(monthParam);
+    if (!month) {
+      return res.status(400).json({ error: "Monat ungueltig." });
+    }
+
+    const start = month.startOf("month");
+    const end = start.plus({ months: 1 });
+
+    const invoices = await prisma.companyInvoice.findMany({
+      where: {
+        companyId: guard.companyId,
+        periodMonth: {
+          gte: start.toUTC().toJSDate(),
+          lt: end.toUTC().toJSDate()
+        }
+      },
+      orderBy: [{ sentAt: "desc" }]
+    });
+
+    return res.json(
+      invoices.map((invoice) => ({
+        id: invoice.id,
+        vendorId: invoice.vendorId,
+        vendorName: invoice.vendorNameSnapshot,
+        companyName: invoice.companyNameSnapshot,
+        month: DateTime.fromJSDate(invoice.periodMonth, { zone: TIMEZONE }).toFormat("yyyy-MM"),
+        invoiceNo: invoice.invoiceNo,
+        sentAt: invoice.sentAt,
+        totalAmount: Number(invoice.totalAmount),
+        ordersCount: invoice.ordersCount,
+        positionsCount: invoice.positionsCount
+      }))
+    );
+  })
+);
+
+router.get(
+  "/invoices/received/:id/download",
+  authRequired,
+  requireRole("COMPANY"),
+  asyncHandler(async (req, res) => {
+    const guard = getCompanyId(req.user?.companyId);
+    if (!guard.ok || !guard.companyId) {
+      return res.status(400).json({ error: guard.error });
+    }
+
+    const invoice = await prisma.companyInvoice.findUnique({
+      where: { id: req.params.id }
+    });
+    if (!invoice || invoice.companyId !== guard.companyId) {
+      return res.status(404).json({ error: "Rechnung nicht gefunden." });
+    }
+
+    const absolutePath = resolveStoredInvoicePath(invoice.pdfPath);
+    let fileBuffer: Buffer;
+    try {
+      fileBuffer = await fs.readFile(absolutePath);
+    } catch {
+      return res.status(404).json({ error: "Rechnungsdatei nicht gefunden." });
+    }
+
+    const month = DateTime.fromJSDate(invoice.periodMonth, { zone: TIMEZONE }).toFormat("yyyy-MM");
+    const safeVendor = invoice.vendorNameSnapshot
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=\"rechnung-${safeVendor || "lieferant"}-${month}.pdf\"`
+    );
+
+    return res.send(fileBuffer);
+  })
+);
+
+router.get(
   "/orders",
   authRequired,
   requireRole("COMPANY"),
   validateQuery(dateQuerySchema),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    if (!guard.ok || !guard.companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
@@ -1045,7 +1146,7 @@ router.get(
   validateQuery(dateQuerySchema),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    if (!guard.ok || !guard.companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
@@ -1120,7 +1221,7 @@ router.get(
   requireRole("COMPANY"),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    if (!guard.ok || !guard.companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
@@ -1147,13 +1248,14 @@ router.post(
   requireRole("COMPANY"),
   asyncHandler(async (req, res) => {
     const guard = getCompanyId(req.user?.companyId);
-    if (!guard.ok) {
+    const companyId = guard.companyId;
+    if (!guard.ok || !companyId) {
       return res.status(400).json({ error: guard.error });
     }
 
     const invite = await prisma.companyInvite.create({
       data: {
-        companyId: guard.companyId,
+        companyId,
         code: generateInviteCode()
       }
     });

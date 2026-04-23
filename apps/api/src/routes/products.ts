@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import path from "path";
 import fs from "fs/promises";
@@ -19,7 +19,7 @@ const createSchema = z.object({
   price: priceSchema.refine((val) => Number.isFinite(val) && val >= 0, "Ungültiger Preis"),
   unit: z.string().min(1),
   active: z.boolean().optional(),
-  imageUrl: z.string().url().optional().nullable(),
+  imageUrl: z.string().min(1).optional().nullable(),
   isPromo: z.boolean().optional()
 });
 
@@ -57,12 +57,26 @@ const parsePrice = (value: unknown): number | null => {
 
 const MENU_UPLOAD_ROOT = path.resolve(process.cwd(), "apps/api/uploads/vendor-menus");
 const MENU_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp"]);
+const PRODUCT_IMAGE_ROOT = path.resolve(process.cwd(), "apps/api/uploads/product-images");
+const PRODUCT_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 const sanitizeFileName = (raw: string) =>
   raw.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-");
 
 const escapeRegex = (raw: string) =>
   raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const removeStoredProductImage = async (imageUrl?: string | null) => {
+  if (!imageUrl || !imageUrl.startsWith("/product-images/")) return;
+  const fileName = path.basename(imageUrl);
+  if (!fileName) return;
+  const absolutePath = path.join(PRODUCT_IMAGE_ROOT, fileName);
+  try {
+    await fs.unlink(absolutePath);
+  } catch {
+    // ignore stale file errors
+  }
+};
 
 const getOwnedVendor = async (vendorId: string, userId?: string) => {
   const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
@@ -205,6 +219,55 @@ router.post(
 );
 
 router.post(
+  "/vendor/products/:id/image",
+  authRequired,
+  requireRole("VENDOR"),
+  upload.single("file"),
+  asyncHandler(async (req, res) => {
+    const vendorId = req.user?.vendorId;
+    if (!vendorId) {
+      return res.status(403).json({ error: "Kein Anbieterprofil." });
+    }
+
+    const product = await prisma.product.findUnique({
+      where: { id: req.params.id },
+      include: { vendor: true }
+    });
+    if (!product || product.vendorId !== vendorId) {
+      return res.status(404).json({ error: "Produkt nicht gefunden." });
+    }
+    if (product.vendor.ownerUserId !== req.user?.userId) {
+      return res.status(403).json({ error: "Keine Berechtigung." });
+    }
+
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "Bitte ein Produktbild auswählen." });
+    }
+
+    const extension = path.extname(file.originalname).toLowerCase();
+    if (!PRODUCT_IMAGE_EXTENSIONS.has(extension)) {
+      return res.status(400).json({ error: "Nur PNG, JPG, JPEG oder WEBP erlaubt." });
+    }
+
+    await fs.mkdir(PRODUCT_IMAGE_ROOT, { recursive: true });
+    await removeStoredProductImage(product.imageUrl);
+
+    const fileName = `${vendorId}-${product.id}-${Date.now()}${extension}`;
+    const fullPath = path.join(PRODUCT_IMAGE_ROOT, fileName);
+    await fs.writeFile(fullPath, file.buffer);
+
+    const imageUrl = `/product-images/${fileName}`;
+    const updated = await prisma.product.update({
+      where: { id: product.id },
+      data: { imageUrl }
+    });
+
+    return res.status(201).json(updated);
+  })
+);
+
+router.post(
   "/vendor/products/import",
   authRequired,
   requireRole("VENDOR"),
@@ -332,6 +395,9 @@ router.put(
     if (product.vendor.ownerUserId !== req.user?.userId) {
       return res.status(403).json({ error: "Keine Berechtigung." });
     }
+    if (req.body.imageUrl === null) {
+      await removeStoredProductImage(product.imageUrl);
+    }
     const updated = await prisma.product.update({
       where: { id: product.id },
       data: {
@@ -340,7 +406,7 @@ router.put(
         price: req.body.price ?? undefined,
         unit: req.body.unit ?? undefined,
         active: req.body.active ?? undefined,
-        imageUrl: req.body.imageUrl ?? undefined,
+        imageUrl: req.body.imageUrl === null ? null : req.body.imageUrl ?? undefined,
         isPromo: req.body.isPromo ?? undefined
       }
     });

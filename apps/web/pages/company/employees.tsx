@@ -61,6 +61,7 @@ export default function CompanyEmployeesPage() {
 
   // --- State: Stats ---
   const [stats, setStats] = useState<Stats | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "NEVER">("ALL");
 
   // --- State: Interner Firmencode ---
   const [internalCode, setInternalCode] = useState<string | null>(null);
@@ -334,11 +335,18 @@ export default function CompanyEmployeesPage() {
   const deleteEmployee = async (id: string, name: string) => {
     if (!auth.token) return;
     if (!window.confirm(`Mitarbeiter "${name}" wirklich löschen?`)) return;
+    const employeeToDelete = employees.find((employee) => employee.id === id) ?? null;
     setDeletingId(id);
     try {
       await apiFetch(`/company/employees/${id}`, { method: "DELETE" }, auth.token);
       setEmployees((prev) => prev.filter((e) => e.id !== id));
-      if (stats) setStats({ ...stats, total: stats.total - 1, active: stats.active - 1 });
+      if (stats && employeeToDelete) {
+        setStats({
+          total: Math.max(0, stats.total - 1),
+          active: Math.max(0, stats.active - (employeeToDelete.mustChangePassword ? 0 : 1)),
+          neverLoggedIn: Math.max(0, stats.neverLoggedIn - (employeeToDelete.mustChangePassword ? 1 : 0))
+        });
+      }
     } catch (err) {
       setEmployeesError((err as Error).message);
     } finally {
@@ -382,6 +390,12 @@ export default function CompanyEmployeesPage() {
       </PageShell>
     );
   }
+
+  const filteredEmployees = employees.filter((employee) => {
+    if (statusFilter === "ACTIVE") return !employee.mustChangePassword;
+    if (statusFilter === "NEVER") return employee.mustChangePassword;
+    return true;
+  });
 
   return (
     <PageShell>
@@ -682,9 +696,35 @@ export default function CompanyEmployeesPage() {
               {exportPdfError && <p className="text-sm text-brand-700">{exportPdfError}</p>}
             </div>
 
+            {!loadingEmployees && employees.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={`dashboard-ghost-btn px-3 py-2 ${statusFilter === "ALL" ? "is-active" : ""}`}
+                  onClick={() => setStatusFilter("ALL")}
+                >
+                  Alle ({employees.length})
+                </button>
+                <button
+                  type="button"
+                  className={`dashboard-ghost-btn px-3 py-2 ${statusFilter === "ACTIVE" ? "is-active" : ""}`}
+                  onClick={() => setStatusFilter("ACTIVE")}
+                >
+                  Aktiv ({employees.filter((employee) => !employee.mustChangePassword).length})
+                </button>
+                <button
+                  type="button"
+                  className={`dashboard-ghost-btn px-3 py-2 ${statusFilter === "NEVER" ? "is-active" : ""}`}
+                  onClick={() => setStatusFilter("NEVER")}
+                >
+                  Nie eingeloggt ({employees.filter((employee) => employee.mustChangePassword).length})
+                </button>
+              </div>
+            )}
+
             {loadingEmployees ? (
               <p className="dashboard-empty">Daten werden geladen...</p>
-            ) : employees.length === 0 ? (
+            ) : filteredEmployees.length === 0 ? (
               <p className="dashboard-empty">Noch keine Mitarbeiter vorhanden.</p>
             ) : (
               <div className="overflow-hidden rounded-xl border border-ink/10">
@@ -698,7 +738,7 @@ export default function CompanyEmployeesPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {employees.map((emp) => (
+                    {filteredEmployees.map((emp) => (
                       <tr key={emp.id} className="border-t border-ink/5 hover:bg-cream/50 transition-colors">
                         <td className="px-3 py-2 font-medium text-ink">{emp.name}</td>
                         <td className="px-3 py-2 font-mono text-xs text-ink/60 hidden sm:table-cell">{emp.email}</td>

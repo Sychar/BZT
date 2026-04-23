@@ -1,4 +1,4 @@
-﻿# Vorbestell Plattform (MVP)
+# Vorbestell Plattform (MVP)
 
 Monorepo für eine Vorbestell-Plattform für Bäckerei und Metzgerei. Mitarbeiter bestellen am Vortag, Anbieter sehen täglich um 04:00 Uhr (Europe/Berlin) automatisch erzeugte Sammellisten.
 
@@ -34,6 +34,15 @@ Monorepo für eine Vorbestell-Plattform für Bäckerei und Metzgerei. Mitarbeite
 **Tests**
 - `npm run test -w apps/api`
 - Erwartet eine zweite DB `vorbestell_test` in Postgres (oder URL im `apps/api/vitest.config.ts` ändern).
+
+**E2E (Playwright)**
+- Einmalig Browser installieren: `npm run e2e:install`
+- API starten: `npm run dev:api`
+- Web starten: `npm run dev:web`
+- E2E laufen lassen: `npm run e2e`
+- Mit sichtbarem Browser: `npm run e2e:headed`
+- UI-Modus: `npm run e2e:ui`
+- Details: `e2e/README.md`
 
 **Seed Daten**
 - Neutraler Admin: `admin@example.com` / `Password123`
@@ -77,6 +86,8 @@ Monorepo für eine Vorbestell-Plattform für Bäckerei und Metzgerei. Mitarbeite
 - `POST /company/employees/credentials-pdf` (PDF für Mitarbeiter-Zugangsdaten erzeugen)
 - `GET /company/orders`
 - `GET /company/orders/export`
+- `GET /company/invoices/received` (empfangene Lieferanten-Rechnungen pro Monat)
+- `GET /company/invoices/received/:id/download` (Rechnungs-PDF herunterladen)
 - `GET /admin/vendor-requests`
 - `POST /admin/vendor-requests/:vendorId/:companyId/approve`
 - `DELETE /admin/vendor-requests/:vendorId/:companyId`
@@ -97,3 +108,6 @@ Monorepo für eine Vorbestell-Plattform für Bäckerei und Metzgerei. Mitarbeite
 - `POST /vendor/products/menu-upload` (PDF/Bild-Menü hochladen)
 - `GET /orders/vendor` (inkl. Gruppierung nach Firma)
 - `GET /orders/vendor/invoices/export-pdf` (Lieferanten-Rechnungs-PDF)
+- `GET /orders/vendor/invoices/sent` (gesendete Firmenrechnungen pro Monat)
+- `POST /orders/vendor/invoices/send` (Firmenrechnung erzeugen + ins Portal senden)
+- `GET /orders/vendor/invoices/:id/download` (gesendete Rechnung herunterladen)

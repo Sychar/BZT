@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DateTime } from "luxon";
 import { PageShell } from "../../components/PageShell";
 import { useAuth } from "../../context/AuthContext";
@@ -23,15 +23,29 @@ type VendorOrdersResponse = {
   companyGroups: CompanyGroup[];
 };
 
+type SentInvoice = {
+  id: string;
+  companyId: string;
+  companyName: string;
+  invoiceNo: string;
+  month: string;
+  sentAt: string;
+  totalAmount: number;
+  ordersCount: number;
+  positionsCount: number;
+};
+
 const monthISO = DateTime.now().toFormat("yyyy-MM");
 
 export default function VendorInvoicesPage() {
   const auth = useAuth();
   const [monthValue, setMonthValue] = useState(monthISO);
   const [data, setData] = useState<VendorOrdersResponse | null>(null);
+  const [sentByCompany, setSentByCompany] = useState<Record<string, SentInvoice>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [pdfLoadingCompanyId, setPdfLoadingCompanyId] = useState<string | null>(null);
+  const [sendingCompanyId, setSendingCompanyId] = useState<string | null>(null);
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
 
   const queryDate = useMemo(() => `${monthValue}-01`, [monthValue]);
 
@@ -42,12 +56,17 @@ export default function VendorInvoicesPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await apiFetch<VendorOrdersResponse>(
-          `/orders/vendor?period=month&date=${queryDate}`,
-          {},
-          auth.token
-        );
-        setData(response);
+        const [ordersData, sentData] = await Promise.all([
+          apiFetch<VendorOrdersResponse>(`/orders/vendor?period=month&date=${queryDate}`, {}, auth.token),
+          apiFetch<SentInvoice[]>(`/orders/vendor/invoices/sent?month=${monthValue}`, {}, auth.token)
+        ]);
+
+        setData(ordersData);
+        const nextMap: Record<string, SentInvoice> = {};
+        sentData.forEach((invoice) => {
+          nextMap[invoice.companyId] = invoice;
+        });
+        setSentByCompany(nextMap);
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -56,41 +75,65 @@ export default function VendorInvoicesPage() {
     };
 
     load();
-  }, [auth.token, queryDate]);
+  }, [auth.token, queryDate, monthValue]);
 
   const invoiceCompanies = useMemo(
     () => (data?.companyGroups ?? []).filter((group) => !!group.companyId),
     [data]
   );
 
-  const exportCompanyPdf = async (companyId: string, companyName: string) => {
+  const sendInvoice = async (companyId: string) => {
     if (!auth.token) return;
 
-    setPdfLoadingCompanyId(companyId);
+    setSendingCompanyId(companyId);
     setError(null);
     try {
-      const response = await fetch(
-        `${API_URL}/orders/vendor/invoices/export-pdf?date=${queryDate}&companyId=${companyId}`,
+      const created = await apiFetch<SentInvoice>(
+        "/orders/vendor/invoices/send",
         {
-          headers: { Authorization: `Bearer ${auth.token}` }
-        }
+          method: "POST",
+          body: JSON.stringify({ month: monthValue, companyId })
+        },
+        auth.token
       );
+
+      setSentByCompany((prev) => ({
+        ...prev,
+        [companyId]: created
+      }));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSendingCompanyId(null);
+    }
+  };
+
+  const downloadInvoice = async (invoice: SentInvoice) => {
+    if (!auth.token) return;
+
+    setDownloadingInvoiceId(invoice.id);
+    setError(null);
+    try {
+      const response = await fetch(`${API_URL}/orders/vendor/invoices/${invoice.id}/download`, {
+        headers: { Authorization: `Bearer ${auth.token}` }
+      });
+
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error ?? "PDF Erstellung fehlgeschlagen.");
+        throw new Error((payload as { error?: string }).error ?? "Download fehlgeschlagen.");
       }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `rechnung-${companyName}-${monthValue}.pdf`;
+      anchor.download = `rechnung-${invoice.companyName}-${monthValue}.pdf`;
       anchor.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setPdfLoadingCompanyId(null);
+      setDownloadingInvoiceId(null);
     }
   };
 
@@ -100,9 +143,9 @@ export default function VendorInvoicesPage() {
         <section className="dashboard-hero">
           <div>
             <p className="dashboard-eyebrow">Rechnung</p>
-            <h1>Rechnung erstellen</h1>
+            <h1>Firmenrechnung senden</h1>
             <p className="dashboard-hero-copy">
-              Bäcker erstellt für jede Firma eine Monatsrechnung als professionelles PDF.
+              Erzeuge pro Firma eine Monatsrechnung und sende sie direkt ins Firmenportal.
             </p>
           </div>
         </section>
@@ -111,7 +154,7 @@ export default function VendorInvoicesPage() {
           <div className="dashboard-panel-head">
             <div>
               <h2>Monat wählen</h2>
-              <p>Danach pro Firma PDF-Rechnung erzeugen.</p>
+              <p>Danach pro Firma Rechnung senden oder bereits gesendete Rechnung herunterladen.</p>
             </div>
             <div className="dashboard-panel-actions">
               <input
@@ -139,7 +182,7 @@ export default function VendorInvoicesPage() {
                 </article>
                 <article className="dashboard-stat-card">
                   <p>Gesamtumsatz</p>
-                  <strong>{data.stats.totalAmount.toFixed(2)} €</strong>
+                  <strong>{data.stats.totalAmount.toFixed(2)} EUR</strong>
                 </article>
               </div>
 
@@ -147,33 +190,55 @@ export default function VendorInvoicesPage() {
                 <p className="dashboard-empty">Keine Firmen-Bestellungen für diesen Monat.</p>
               ) : (
                 <div className="dashboard-list">
-                  {invoiceCompanies.map((group) => (
-                    <article key={group.companyId as string} className="dashboard-list-item">
-                      <div className="dashboard-list-head">
-                        <div>
-                          <p className="dashboard-item-title">Firma {group.companyName}</p>
-                          <p className="dashboard-item-subtitle">
-                            {group.ordersCount} Bestellungen · Mittelwert {group.averageOrderValue.toFixed(2)} €
-                          </p>
+                  {invoiceCompanies.map((group) => {
+                    const sentInvoice = group.companyId ? sentByCompany[group.companyId] : undefined;
+                    return (
+                      <article key={group.companyId as string} className="dashboard-list-item">
+                        <div className="dashboard-list-head">
+                          <div>
+                            <p className="dashboard-item-title">Firma {group.companyName}</p>
+                            <p className="dashboard-item-subtitle">
+                              {group.ordersCount} Bestellungen · Mittelwert {group.averageOrderValue.toFixed(2)} EUR
+                            </p>
+                            {sentInvoice && (
+                              <p className="dashboard-item-subtitle">
+                                {sentInvoice.invoiceNo} · gesendet am {new Date(sentInvoice.sentAt).toLocaleString("de-DE")}
+                              </p>
+                            )}
+                          </div>
+                          <div className="dashboard-list-meta">
+                            <p>{group.totalAmount.toFixed(2)} EUR</p>
+                            <span>Monatssumme</span>
+                          </div>
                         </div>
-                        <div className="dashboard-list-meta">
-                          <p>{group.totalAmount.toFixed(2)} €</p>
-                          <span>Monatssumme</span>
-                        </div>
-                      </div>
 
-                      <div className="dashboard-inline-actions">
-                        <button
-                          type="button"
-                          className="dashboard-primary-btn"
-                          onClick={() => exportCompanyPdf(group.companyId as string, group.companyName)}
-                          disabled={pdfLoadingCompanyId === group.companyId}
-                        >
-                          {pdfLoadingCompanyId === group.companyId ? "PDF wird erstellt..." : "PDF Rechnung erstellen"}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                        <div className="dashboard-inline-actions">
+                          {sentInvoice ? (
+                            <>
+                              <span className="dashboard-status is-active">Gesendet</span>
+                              <button
+                                type="button"
+                                className="dashboard-primary-btn"
+                                onClick={() => downloadInvoice(sentInvoice)}
+                                disabled={downloadingInvoiceId === sentInvoice.id}
+                              >
+                                {downloadingInvoiceId === sentInvoice.id ? "Download läuft..." : "PDF herunterladen"}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="dashboard-primary-btn"
+                              onClick={() => sendInvoice(group.companyId as string)}
+                              disabled={sendingCompanyId === group.companyId}
+                            >
+                              {sendingCompanyId === group.companyId ? "Wird gesendet..." : "Rechnung senden"}
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -183,4 +248,3 @@ export default function VendorInvoicesPage() {
     </PageShell>
   );
 }
-

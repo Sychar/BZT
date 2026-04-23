@@ -1,7 +1,13 @@
 import jwt from "jsonwebtoken";
 import { prisma } from "../src/prisma";
 
-export const signToken = (payload: { userId: string; role: "CUSTOMER" | "VENDOR"; vendorId?: string | null }) => {
+export const signToken = (payload: {
+  userId: string;
+  role: "CUSTOMER" | "VENDOR" | "COMPANY";
+  vendorId?: string | null;
+  companyId?: string | null;
+  customerType?: "EMPLOYEE" | "PRIVATE" | null;
+}) => {
   const secret = process.env.JWT_SECRET ?? "test-secret";
   return jwt.sign(payload, secret, { expiresIn: "1h" });
 };

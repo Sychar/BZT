@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import path from "path";
 import authRouter from "./routes/auth";
 import vendorsRouter from "./routes/vendors";
 import productsRouter from "./routes/products";
@@ -18,6 +19,10 @@ const app = express();
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use(
+  "/product-images",
+  express.static(path.resolve(process.cwd(), "apps/api/uploads/product-images"))
+);
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 

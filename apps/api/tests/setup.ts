@@ -11,6 +11,7 @@ const truncateAll = async () => {
   await prisma.dailyMenu.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
+  await prisma.companyInvoice.deleteMany();
   await prisma.product.deleteMany();
   await prisma.vendorCompany.deleteMany();
   await prisma.companyInvite.deleteMany();

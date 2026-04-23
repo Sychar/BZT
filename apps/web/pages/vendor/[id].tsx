@@ -1,7 +1,7 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { PageShell } from "../../components/PageShell";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, API_URL } from "../../lib/api";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
 
@@ -12,6 +12,7 @@ type Product = {
   price: string;
   unit: string;
   isPromo: boolean;
+  imageUrl?: string | null;
 };
 
 type Vendor = {
@@ -20,6 +21,12 @@ type Vendor = {
   type: "BAECKER" | "METZGER" | "RESTAURANT";
   address: string;
   products: Product[];
+};
+
+const toAssetUrl = (imageUrl?: string | null) => {
+  if (!imageUrl) return null;
+  if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) return imageUrl;
+  return `${API_URL}${imageUrl}`;
 };
 
 export default function VendorDetailPage() {
@@ -93,33 +100,41 @@ export default function VendorDetailPage() {
             <div className="card p-6 space-y-4">
               <h2 className="text-xl font-display font-semibold">Tagesangebote</h2>
               <div className="space-y-3">
-                {promos.map((product) => (
-                  <div key={product.id} className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold">{product.name}</p>
-                      <p className="text-sm text-ink/60">{product.unit}</p>
+                {promos.map((product) => {
+                  const image = toAssetUrl(product.imageUrl);
+                  return (
+                    <div key={product.id} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {image ? (
+                          <img src={image} alt={product.name} className="h-12 w-12 rounded-lg border border-ink/10 object-cover" />
+                        ) : null}
+                        <div>
+                          <p className="font-semibold">{product.name}</p>
+                          <p className="text-sm text-ink/60">{product.unit}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <p className="font-semibold">{Number(product.price).toFixed(2)} €</p>
+                        <button
+                          onClick={() => {
+                            if (cart.vendorId && cart.vendorId !== vendor.id) {
+                              cart.clear();
+                            }
+                            cart.setVendor(vendor.id);
+                            cart.addItem({
+                              productId: product.id,
+                              name: product.name,
+                              price: Number(product.price)
+                            });
+                          }}
+                          className="rounded-full bg-brand-500 px-4 py-2 text-paper text-sm font-semibold"
+                        >
+                          Hinzufügen
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <p className="font-semibold">{Number(product.price).toFixed(2)} €</p>
-                      <button
-                        onClick={() => {
-                          if (cart.vendorId && cart.vendorId !== vendor.id) {
-                            cart.clear();
-                          }
-                          cart.setVendor(vendor.id);
-                          cart.addItem({
-                            productId: product.id,
-                            name: product.name,
-                            price: Number(product.price)
-                          });
-                        }}
-                        className="rounded-full bg-brand-500 px-4 py-2 text-paper text-sm font-semibold"
-                      >
-                        Hinzufügen
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -127,35 +142,43 @@ export default function VendorDetailPage() {
             <div key={category} className="card p-6 space-y-4">
               <h2 className="text-xl font-display font-semibold">{category}</h2>
               <div className="space-y-3">
-                {items.map((product) => (
-                  <div key={product.id} className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold">
-                        {product.name} {product.isPromo ? "• Promo" : ""}
-                      </p>
-                      <p className="text-sm text-ink/60">{product.unit}</p>
+                {items.map((product) => {
+                  const image = toAssetUrl(product.imageUrl);
+                  return (
+                    <div key={product.id} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {image ? (
+                          <img src={image} alt={product.name} className="h-12 w-12 rounded-lg border border-ink/10 object-cover" />
+                        ) : null}
+                        <div>
+                          <p className="font-semibold">
+                            {product.name} {product.isPromo ? "• Promo" : ""}
+                          </p>
+                          <p className="text-sm text-ink/60">{product.unit}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <p className="font-semibold">{Number(product.price).toFixed(2)} €</p>
+                        <button
+                          onClick={() => {
+                            if (cart.vendorId && cart.vendorId !== vendor.id) {
+                              cart.clear();
+                            }
+                            cart.setVendor(vendor.id);
+                            cart.addItem({
+                              productId: product.id,
+                              name: product.name,
+                              price: Number(product.price)
+                            });
+                          }}
+                          className="rounded-full bg-brand-500 px-4 py-2 text-paper text-sm font-semibold"
+                        >
+                          Hinzufügen
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <p className="font-semibold">{Number(product.price).toFixed(2)} €</p>
-                      <button
-                        onClick={() => {
-                          if (cart.vendorId && cart.vendorId !== vendor.id) {
-                            cart.clear();
-                          }
-                          cart.setVendor(vendor.id);
-                          cart.addItem({
-                            productId: product.id,
-                            name: product.name,
-                            price: Number(product.price)
-                          });
-                        }}
-                        className="rounded-full bg-brand-500 px-4 py-2 text-paper text-sm font-semibold"
-                      >
-                        Hinzufügen
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}

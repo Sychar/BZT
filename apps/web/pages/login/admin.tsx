@@ -35,8 +35,9 @@ export default function AdminLoginPage() {
     <PageShell title="Admin-Login">
       <form onSubmit={handleSubmit} className="card p-6 max-w-xl space-y-4">
         <div>
-          <label className="text-sm text-ink/70">E-Mail</label>
+          <label htmlFor="admin-email" className="text-sm text-ink/70">E-Mail</label>
           <input
+            id="admin-email"
             type="email"
             required
             value={email}
@@ -45,8 +46,9 @@ export default function AdminLoginPage() {
           />
         </div>
         <div>
-          <label className="text-sm text-ink/70">Passwort</label>
+          <label htmlFor="admin-password" className="text-sm text-ink/70">Passwort</label>
           <input
+            id="admin-password"
             type="password"
             required
             value={password}
